@@ -85,8 +85,8 @@ def detect_inversion_seg(
     if not override and out_detection_water and out_detection_fat and out_detection_water.exists() and out_detection_fat.exists():
         return out_detection_water, out_detection_fat
     # Run segmentation
-    a, _ = run_nnunet([water_image, inphase_file, outphase_file], out_detection_water, override=override, dataset_id=282, gpu=gpu, ddevice=ddevice)
-    b, _ = run_nnunet([fat_image, inphase_file, outphase_file], out_detection_fat, override=override, dataset_id=282, gpu=gpu, ddevice=ddevice)
+    a = run_nnunet([water_image, inphase_file, outphase_file], out_detection_water, override=override, dataset_id=282, gpu=gpu, ddevice=ddevice)
+    b = run_nnunet([fat_image, inphase_file, outphase_file], out_detection_fat, override=override, dataset_id=282, gpu=gpu, ddevice=ddevice)
     # Delete files if we
     return a, b
 
