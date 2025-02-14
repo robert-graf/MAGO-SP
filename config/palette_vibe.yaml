@@ -1,0 +1,63 @@
+model_type: palette
+model:
+    base_learning_rate:  0.000002
+    scale_lr: True # Scale via bachsize and 
+    target: networks.models.diffusion.ddpm.DDPM
+    monitor: 'val/loss_simple_ema'
+    params:
+        linear_start: 0.0001
+        linear_end: 0.02
+        cosine_s: 0.008
+        log_every_t: 5000
+        timesteps: 1000
+        ddim_steps: 20
+        first_stage_key: water # Target image
+        #dict_keys(['eco2-opp2', 'eco4-pop1', 'eco1-pip1', 'r2s', 'water-fraction', 'fat', 'eco5-arb1', 'eco0-opp1', 'water', 'fat-fraction', 'eco3-in1'])    
+        conditioning_key_concat: [inphase,outphase]
+        conditioning_key_crossattn: Null
+        image_size: &size 256  
+        channels: &channels 1 #base channels * (#first_stage_key) --- Used for generating DDIM Noise Input
+        monitor: val/loss
+        use_ema: True    
+        loss_type: l1
+        beta_schedule: cosine
+        dims: 2
+        clamp: [-1,1]
+        unet_config:
+            target: networks.backbone.openaimodel.UNetModel
+            params:
+                image_size: *size
+                in_channels: 3 #base channels * (#first_stage_key + # conditioning_key_concat)
+                out_channels: 1  
+                model_channels: 64 #
+                attention_resolutions: [8] # 2*(i-1), where i is the i-th layer (counting starts at 1) from top and bottom
+                # 1 = first layer/last layer
+                # 2 = second/ second last
+                # 4 = 3 / -3
+                # 8 = 4 / -4
+                num_res_blocks: 2
+                channel_mult: [ 1,2,4,8] 
+                num_heads: 8
+                use_spatial_transformer: false
+                use_scale_shift_norm: True
+                resblock_updown: True
+
+
+data:
+    target: main.DataModuleFromConfig  # Make a dataset
+    params:
+        batch_size: 8 #16 #6
+        wrap: True
+        num_workers: 16 # Depends on the machine
+        train:
+            target: datasets.vibe.VIBE_dataset
+            params:
+                size: *size
+        validation:
+            target: datasets.vibe.VIBE_dataset
+            params:
+                size: *size
+                validation: True
+trainer:
+    accumulate_grad_batches: 2
+    max_epochs: 500

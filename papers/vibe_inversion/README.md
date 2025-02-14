@@ -6,29 +6,7 @@ You find the MAGO-SP code in /papers/vibe_inversion
 
 ## Installation
 
-```
-# Run this commands by coping in to the Terminal
-# Recommended: make a virtual Python environment (example shows Anaconda)
-conda create -n "TotalVibeSegmentator" python=3.11.0
-conda activate TotalVibeSegmentator
-
-# Install PyTorch that works with your GPU (follow instructions at https://pytorch.org/get-started/locally/)
-pip install torch torchvision torchaudio
-
-# Install required Python packages
-pip install TPTBox ruamel.yaml configargparse
-pip install nnunetv2 
-# We recommend the newest versions. Tested versions: TPTBox==1.6, ruamel.yaml==0.18.6, configargparse==1.7, nnunetv2==2.4.2
-
-# If e. g. nnunetv2 does not work, try version 2.4.2
-# Uninstall the current version and reinstall with the specified version
-#pip uninstall nnunetv2
-#pip install nnunetv2==2.4.2
-
-# Download the scripts (they will be downloaded to your current folder)
-git clone https://github.com/robert-graf/MAGO-SP.git
-cd TotalVibeSegmentator
-```
+TODO
 
 ## Individual Functions
 
@@ -85,7 +63,7 @@ run_nnunet(
 from pipeline import predict_signal_prior
 
 def predict_signal_prior(
-    s_magnitude: Sequence[Image-Paths], # Path to nii files
+    s_magnitude: Sequence[Image_Reference], # Path to nii files
     #Default: VIBE: outphase/inphase
     #       MEVIBE: 0 to 5
     out_signal_prior: str | Path | None = None,
