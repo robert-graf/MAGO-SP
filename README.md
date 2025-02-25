@@ -42,7 +42,7 @@ from mago_methods import (
     magorino,
     magorino_ISMRM,
     mago_sp,
-    mago_sp_ISMRM,  # There is a boolen flag to use MAGO or MAGORINO
+    mago_sp_ISMRM,  # There is a boolean flag to use MAGO or MAGORINO
 )
 ```
 
