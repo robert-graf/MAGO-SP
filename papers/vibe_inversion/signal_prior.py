@@ -4,7 +4,7 @@ from pathlib import Path
 
 import torch
 from TPTBox import NII, Image_Reference, to_nii
-from TPTBox.segmentation.TotalVibeSeg.auto_download import _download
+from TPTBox.segmentation.VibeSeg.auto_download import _download
 
 root = str(Path(__file__).parents[2])
 sys.path.append(root)
@@ -16,13 +16,15 @@ from utils.config_loading import instantiate_from_config
 from utils.reload import get_config, get_device
 
 
-def _norm_input(s_magnitude: Sequence[Image_Reference], cond):
+def _norm_input(s_magnitude: Sequence[Image_Reference], cond, is_3d=False):
     def _help(i: Image_Reference):
         n = to_nii(i)
         v = n.get_array() - n.min()
         v = v / 1000
         v = 2 * v - 1
         v = torch.from_numpy(v)
+        if is_3d:
+            return v.unsqueeze(0).unsqueeze(0)
         return v.unsqueeze(1)
 
     return {b: _help(batch) for b, batch in zip(cond, s_magnitude, strict=True)}
@@ -42,22 +44,49 @@ def _norm_input(s_magnitude: Sequence[Image_Reference], cond):
 #        nii.clamp_(min=0)
 #        return nii
 #
-
-
-def pad_to_divisible_by_16(tensor: torch.Tensor):
+def pad_to_divisible_by_16(tensor: torch.Tensor, is_3d: bool = False, size=16):
     """
-    Pads the last two dimensions of a tensor to make them divisible by 16.
+    Pads the spatial dimensions of a tensor to make them divisible by 16.
 
     Args:
-        tensor (torch.Tensor): Input tensor of shape (N, C, H, W).
+        tensor (torch.Tensor):
+            Input tensor of shape (N, C, H, W) if is_3d=False,
+            or (N, C, D, H, W) if is_3d=True.
+        is_3d (bool): Whether the tensor is 3D (with depth).
 
     Returns:
         torch.Tensor: Padded tensor.
-        tuple: Padding applied ((pad_left, pad_right), (pad_top, pad_bottom)).
+        tuple: Padding applied for each spatial dimension.
+            - 2D: ((pad_left, pad_right), (pad_top, pad_bottom))
+            - 3D: ((pad_left, pad_right), (pad_top, pad_bottom), (pad_front, pad_back))
     """
+    if is_3d:
+        depth, height, width = tensor.shape[-3:]
+
+        pad_d = (size - depth % size) % size
+        pad_h = (size - height % size) % size
+        pad_w = (size - width % size) % size
+
+        pad_front = pad_d // 2
+        pad_back = pad_d - pad_front
+        pad_top = pad_h // 2
+        pad_bottom = pad_h - pad_top
+        pad_left = pad_w // 2
+        pad_right = pad_w - pad_left
+
+        padded_tensor = torch.nn.functional.pad(
+            tensor,
+            (pad_left, pad_right, pad_top, pad_bottom, pad_front, pad_back),  # (W, H, D)
+            mode="constant",
+            value=0,
+        )
+
+        return padded_tensor, ((pad_left, pad_right), (pad_top, pad_bottom), (pad_front, pad_back))
+
     height, width = tensor.shape[-2:]
-    pad_h = (16 - height % 16) % 16
-    pad_w = (16 - width % 16) % 16
+
+    pad_h = (size - height % size) % size
+    pad_w = (size - width % size) % size
 
     pad_top = pad_h // 2
     pad_bottom = pad_h - pad_top
@@ -66,7 +95,7 @@ def pad_to_divisible_by_16(tensor: torch.Tensor):
 
     padded_tensor = torch.nn.functional.pad(
         tensor,
-        (pad_left, pad_right, pad_top, pad_bottom),  # Pad order: (W_left, W_right, H_top, H_bottom)
+        (pad_left, pad_right, pad_top, pad_bottom),  # (W, H)
         mode="constant",
         value=0,
     )
@@ -110,18 +139,19 @@ def _inference(
     for i in range(0, batch_size, sub_batch_size):
         sub_batch = {k: v[0][i : i + sub_batch_size] for k, v in batch.items()}
 
-        with torch.autocast(device_type=ddevice, dtype=torch.float16):
+        with torch.autocast(device_type=str(ddevice), dtype=torch.float16):
             key = next(iter(sub_batch.keys()))
             shape = sub_batch[key].shape
             with model.ema_scope("Plotting"):
-                samples, _ = model.sample(
+                model.clamp = (-1, 1)
+                samples = model.sample(
                     sub_batch,
                     batch_size=shape[0],
                     return_intermediates=False,
                     ddim=True,
                     ddim_steps=ddim_steps,
                     shape=shape,
-                    clamp=lambda x: torch.clamp(x, -1, 1),
+                    # clamp=lambda x: torch.clamp(x, -1, 1),
                 )
 
                 samples = crop_to_original(samples, batch[key][1])
@@ -223,13 +253,14 @@ def signal_prior_mevibe(
 
     # Configure device and move model to device
     device = get_device(ddevice, gpu)
+    print("predict on", device)
     model.to(device)
 
     # Normalize input images and prepare for inference
     s_magnitude_torch = _norm_input(s_magnitude, cond)
 
     # Perform inference to generate signal prior
-    signal_prior_water = _inference(model, s_magnitude_torch, to_nii(s_magnitude[0]), ddim_steps=steps_signal_prior, ddevice=ddevice)
+    signal_prior_water = _inference(model, s_magnitude_torch, to_nii(s_magnitude[0]), ddim_steps=steps_signal_prior, ddevice=device)
     if use_spacing:
         signal_prior_water.resample_from_to_(example_nii)
     else:

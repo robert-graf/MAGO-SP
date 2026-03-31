@@ -8,10 +8,12 @@ from typing import Literal
 
 import numpy as np
 from TPTBox import BIDS_FILE, NII, Image_Reference, to_nii
-from TPTBox.segmentation.TotalVibeSeg import run_totalvibeseg, total_vibe_map
-from TPTBox.segmentation.TotalVibeSeg.inference_nnunet import run_inference_on_file
+from TPTBox.segmentation.VibeSeg.inference_nnunet import run_inference_on_file
+from TPTBox.segmentation.VibeSeg.vibeseg import VibeSeg_map, run_vibeseg
 
 sys.path.append(str(Path(__file__).parents[2]))
+from TPTBox import Print_Logger
+
 from papers.vibe_inversion.recon_mevibe import multipeak_fat_model_from_guess, multipeak_fat_model_smooth
 from papers.vibe_inversion.recon_vibe import vibe_separate_phase_from_guess, vibe_separate_water_fat_from_guess
 from papers.vibe_inversion.signal_prior import signal_prior_mevibe, signal_prior_vibe
@@ -96,6 +98,8 @@ def make_swap_statistic_single(
     seg1_water: Image_Reference,
     seg2_fat: Image_Reference,
     total_vibe: Image_Reference | None = None,
+    roi: Path | BIDS_FILE | None = None,
+    roi_exclude=(10, 9),
 ) -> Swap_statistic:
     """
     Identifies water-fat inversions in the segmentation, optionally using total VIBE segmentation.
@@ -124,7 +128,14 @@ def make_swap_statistic_single(
     # Ensure both segmentations have the same shape
     if nii_water.shape != nii_fat.shape:
         nii_fat.resample_from_to_(nii_water)
-
+    if roi is not None and roi.exists():
+        roi_nii = to_nii(roi, True)
+        if nii_water.shape != nii_fat.shape:
+            roi_nii.resample_from_to_(nii_water)
+        nii_water[roi_nii.extract_label(roi_exclude)] = 0
+        nii_water[roi_nii == 0] = 0
+        nii_fat[roi_nii.extract_label(roi_exclude)] = 0
+        nii_fat[roi_nii == 0] = 0
     # Create an inversion mask
     nii_fat[nii_water == 0] = 0  # Background remains as 0
     nii_water[nii_fat != nii_water] = 3  # Disagreement mask
@@ -142,7 +153,7 @@ def make_swap_statistic_single(
         vibe_nii[disagreement_mask != 1] = 0
 
         # Map unique labels to corresponding structures
-        affected_structures = [total_vibe_map[label] for label in vibe_nii.unique() if label in total_vibe_map]
+        affected_structures = [VibeSeg_map[label] for label in vibe_nii.unique() if label in VibeSeg_map]
 
     # Calculate inversion statistics
     return Swap_statistic(
@@ -201,6 +212,10 @@ def recon_fat_water_model(
     ti_ms: list[float] | None = None,
     override=False,
     vibe_from_signal=False,
+    MagneticFieldStrength=3.0,
+    alpha_p=None,
+    freqs_ppm=None,
+    use_rician=True,
 ):
     """
     MEVIBE:
@@ -225,7 +240,9 @@ def recon_fat_water_model(
         ti_ms (list[float] | None, optional): List of echo times in milliseconds for MEVIBE. Defaults to None.
         override (bool, optional): If True, overwrite existing outputs. Defaults to False.
         vibe_from_signal (bool, optional): If True, use VIBE reconstruction from the signal prior. Defaults to False.
-
+        MagneticFieldStrength: Tesla of the MR device
+        alpha_p: alpha of the Water/Fat model
+        freqs_ppm: frequs of the Water/Fat model
     Returns:
         Tuple[NII, NII, NII, NII]: A tuple containing the reconstructed water, fat, R2*, and loss maps as NII objects.
 
@@ -252,15 +269,19 @@ def recon_fat_water_model(
             out_reconstruction_loss='loss.nii'
         )
     """
+    args: dict = {"MagneticFieldStrength": MagneticFieldStrength}
+    if alpha_p is not None:
+        args["alpha_p"] = alpha_p
+    if freqs_ppm is not None:
+        args["freqs_ppm"] = freqs_ppm
     # Validate the input
     assert len(s_magnitude) > 1, "s_magnitude must contain at least two magnitude image."
-    if not override and all(
-        i is not None and Path(i).exists() for i in [out_reconstruction_water, out_reconstruction_fat, out_reconstruction_r2s, out_reconstruction_loss]
-    ):
+
+    if not override and all(i is not None and Path(i).exists() for i in [out_reconstruction_water, out_reconstruction_fat, out_reconstruction_r2s]):
         out_w_nii = NII.load(out_reconstruction_water, False) if out_reconstruction_water is not None else None
         out_f_nii = NII.load(out_reconstruction_fat, False) if out_reconstruction_fat is not None else None
         out_r_nii = NII.load(out_reconstruction_r2s, False) if out_reconstruction_r2s is not None else None
-        out_l_nii = NII.load(out_reconstruction_loss, False) if out_reconstruction_loss is not None else None
+        out_l_nii = NII.load(out_reconstruction_loss, False) if out_reconstruction_loss is not None and Path(out_reconstruction_loss).exists() else None
         return out_w_nii, out_f_nii, out_r_nii, out_l_nii
     if len(s_magnitude) == 2 and not override and all(i is not None and Path(i).exists() for i in [out_reconstruction_water, out_reconstruction_fat]):
         out_w_nii = NII.load(out_reconstruction_water, False)
@@ -287,7 +308,7 @@ def recon_fat_water_model(
         # MEVIBE
         # Perform multipeak fat model reconstruction
         print("no signal prior")
-        out_w, out_f, out_r, out_l = multipeak_fat_model_smooth(s_magnitude_arr, ti_ms=ti_ms)
+        out_w, out_f, out_r, out_l = multipeak_fat_model_smooth(s_magnitude_arr, ti_ms=ti_ms, rician_loss=use_rician, **args)
         grid = to_nii(s_magnitude[0])  # just for the affine info
     else:
         # MEVIBE
@@ -300,7 +321,9 @@ def recon_fat_water_model(
         pd_sum = to_nii(water_image).get_array().astype(float) + to_nii(fat_image).get_array().astype(float)
         fat_prior = pd_sum - water_prior.get_array().astype(float)
         fat_prior[fat_prior < 0] = 0
-        out_w, out_f, out_r, out_l = multipeak_fat_model_from_guess(s_magnitude_arr, water_prior.get_array(), fat_guess=fat_prior, ti_ms=ti_ms)
+        out_w, out_f, out_r, out_l = multipeak_fat_model_from_guess(
+            s_magnitude_arr, water_prior.get_array(), fat_guess=fat_prior, ti_ms=ti_ms, rician_loss=use_rician, **args
+        )
 
     out_w_nii = grid.set_array(out_w)
     out_f_nii = grid.set_array(out_f)
@@ -358,6 +381,14 @@ def pipeline(
     ti_ms: list[float] | None = None,
     evaluate_reconstructed=True,
     vibe_from_signal=True,
+    roi: str | Path | None = None,
+    roi_exclude=(9, 10),
+    resample=False,
+    stop_after_signal_prior=True,
+    MagneticFieldStrength=3.0,
+    alpha_p=None,
+    freqs_ppm=None,
+    use_rician=True,
 ) -> Result:
     """
     Pipeline for water-fat separation and reconstruction from MRI data.
@@ -424,58 +455,115 @@ def pipeline(
         - For VIBE, `s_magnitude` typically includes outphase and inphase images.
         - This function attempts to minimize manual intervention through automated correction.
     """
-    # TODO limit FOV to speed up correction
+    try:
+        # TODO limit FOV to speed up correction
 
-    # Final output exists
-    # if not override and all(i is not None and Path(i).exists() for i in [out_reconstruction_water, out_reconstruction_fat, out_reconstruction_r2s]):
-    #    return Result()
-    if total_vibe:
-        run_totalvibeseg(s_magnitude[1], total_vibe, gpu=gpu, ddevice=ddevice)
-    # Compute detection
-    water_detection, fat_detection = detect_inversion_seg(
-        s_magnitude[0], s_magnitude[1], water_image, fat_image, out_detection_water, out_detection_fat, override, ddevice, gpu
-    )
-    swap_static = make_swap_statistic_single(str(out_reconstruction_water), water_detection, fat_detection, total_vibe)
-    # count_fat is the amount of swapped pixels
-    # count_disagree is the amount of pixels, where the detection disagrees
-    needs_correction = swap_static.count_fat >= threshold_swapped_voxels or swap_static.count_disagree >= threshold_disagree_voxels
-    if not needs_correction:
-        return Result(original_swap_stat=swap_static, needs_correction=False)
-    # Take s_magnitude to compute with DL a water image
-    signal_prior = predict_signal_prior(s_magnitude, out_signal_prior, steps_signal_prior, override, gpu, ddevice)
-    out_w_nii, out_f_nii, out_r_nii, out_l_nii = recon_fat_water_model(
-        s_magnitude,
-        water_image,
-        fat_image,
-        signal_prior,
-        out_reconstruction_water,
-        out_reconstruction_fat,
-        out_reconstruction_r2s,
-        out_reconstruction_loss,
-        ti_ms=ti_ms,
-        override=override,
-        vibe_from_signal=vibe_from_signal,
-    )
-    if out_reconstruction_pdwf is not None or out_reconstruction_pdff is not None:
-        make_pdff_pdwf(out_w_nii, out_f_nii, out_reconstruction_pdff, out_reconstruction_pdwf)
-    if not evaluate_reconstructed:
-        return Result(original_swap_stat=swap_static, needs_correction=True, out_w_nii=out_w_nii, out_f_nii=out_f_nii, out_r_nii=out_r_nii, out_l_nii=out_l_nii)
-    # Compute detection
-    water_detection, fat_detection = detect_inversion_seg(
-        s_magnitude[0], s_magnitude[1], out_w_nii, out_f_nii, out_detection_water_reconstructed, out_detection_fat_reconstructed, override, ddevice, gpu
-    )
-    swap_static_rec = make_swap_statistic_single(str(out_reconstruction_water), water_detection, fat_detection, total_vibe)
-    needs_manuel_intervention = swap_static_rec.count_fat >= threshold_swapped_voxels or swap_static_rec.count_disagree >= threshold_disagree_voxels
-    return Result(
-        original_swap_stat=swap_static,
-        needs_correction=True,
-        out_w_nii=out_w_nii,
-        out_f_nii=out_f_nii,
-        out_r_nii=out_r_nii,
-        out_l_nii=out_l_nii,
-        reconstructed_swap_stat=swap_static_rec,
-        needs_manuel_intervention=needs_manuel_intervention,
-    )
+        # Final output exists
+        # if not override and all(i is not None and Path(i).exists() for i in [out_reconstruction_water, out_reconstruction_fat, out_reconstruction_r2s]):
+        #    return Result()
+        assert not override
+        if total_vibe:
+            run_vibeseg(s_magnitude[1], total_vibe, gpu=gpu, ddevice=ddevice)
+        if resample:
+            water_image = to_nii(water_image)
+            s_magnitude[0] = to_nii(s_magnitude[0]).resample_from_to(water_image, verbose=False)
+            s_magnitude[1] = to_nii(s_magnitude[1]).resample_from_to(water_image, verbose=False)
+            fat_image = to_nii(fat_image).resample_from_to(water_image, verbose=False)
+        # Compute detection
+        water_detection, fat_detection = detect_inversion_seg(
+            s_magnitude[0], s_magnitude[1], water_image, fat_image, out_detection_water, out_detection_fat, override, ddevice, gpu
+        )
+        swap_static = make_swap_statistic_single(
+            str(out_reconstruction_water),
+            water_detection,
+            fat_detection,
+            total_vibe,
+            roi=roi,
+            roi_exclude=roi_exclude,
+        )
+        # count_fat is the amount of swapped pixels
+        # count_disagree is the amount of pixels, where the detection disagrees
+        needs_correction = swap_static.count_fat >= threshold_swapped_voxels or swap_static.count_disagree >= threshold_disagree_voxels
+        if not needs_correction:
+            return Result(original_swap_stat=swap_static, needs_correction=False)
+        # Take s_magnitude to compute with DL a water image
+        signal_prior = predict_signal_prior(s_magnitude, out_signal_prior, steps_signal_prior, override, gpu, ddevice)
+        if stop_after_signal_prior:
+            return Result(original_swap_stat=swap_static, needs_correction=False)
+        out_w_nii, out_f_nii, out_r_nii, out_l_nii = recon_fat_water_model(
+            s_magnitude,
+            water_image,
+            fat_image,
+            signal_prior,
+            out_reconstruction_water,
+            out_reconstruction_fat,
+            out_reconstruction_r2s,
+            out_reconstruction_loss,
+            ti_ms=ti_ms,
+            override=override,
+            vibe_from_signal=vibe_from_signal,
+            MagneticFieldStrength=MagneticFieldStrength,
+            alpha_p=alpha_p,
+            freqs_ppm=freqs_ppm,
+            use_rician=use_rician,
+        )
+        if out_reconstruction_pdwf is not None or out_reconstruction_pdff is not None:
+            make_pdff_pdwf(out_w_nii, out_f_nii, out_reconstruction_pdff, out_reconstruction_pdwf)
+        if not evaluate_reconstructed:
+            return Result(original_swap_stat=swap_static, needs_correction=True, out_w_nii=out_w_nii, out_f_nii=out_f_nii, out_r_nii=out_r_nii, out_l_nii=out_l_nii)
+        # Compute detection
+        water_detection, fat_detection = detect_inversion_seg(
+            s_magnitude[0], s_magnitude[1], out_w_nii, out_f_nii, out_detection_water_reconstructed, out_detection_fat_reconstructed, override, ddevice, gpu
+        )
+        swap_static_rec = make_swap_statistic_single(
+            str(out_reconstruction_water),
+            water_detection,
+            fat_detection,
+            total_vibe,
+            roi=roi,
+            roi_exclude=roi_exclude,
+        )
+        needs_manuel_intervention = swap_static_rec.count_fat >= threshold_swapped_voxels or swap_static_rec.count_disagree >= threshold_disagree_voxels
+        return Result(
+            original_swap_stat=swap_static,
+            needs_correction=True,
+            out_w_nii=out_w_nii,
+            out_f_nii=out_f_nii,
+            out_r_nii=out_r_nii,
+            out_l_nii=out_l_nii,
+            reconstructed_swap_stat=swap_static_rec,
+            needs_manuel_intervention=needs_manuel_intervention,
+        )
+    except ValueError:
+        return pipeline(
+            s_magnitude=s_magnitude,
+            water_image=water_image,
+            fat_image=fat_image,
+            out_reconstruction_water=out_reconstruction_water,
+            out_reconstruction_fat=out_reconstruction_fat,
+            out_reconstruction_r2s=out_reconstruction_r2s,
+            out_reconstruction_pdwf=out_reconstruction_pdwf,
+            out_reconstruction_pdff=out_reconstruction_pdff,
+            total_vibe=total_vibe,
+            out_detection_water=out_detection_water,
+            out_detection_fat=out_detection_fat,
+            out_signal_prior=out_signal_prior,
+            out_reconstruction_loss=out_reconstruction_loss,
+            out_detection_water_reconstructed=out_detection_water_reconstructed,
+            out_detection_fat_reconstructed=out_detection_fat_reconstructed,
+            steps_signal_prior=steps_signal_prior,
+            override=True,
+            ddevice=ddevice,
+            gpu=gpu,
+            threshold_swapped_voxels=threshold_swapped_voxels,
+            threshold_disagree_voxels=threshold_disagree_voxels,
+            ti_ms=ti_ms,
+            evaluate_reconstructed=evaluate_reconstructed,
+            vibe_from_signal=vibe_from_signal,
+            roi=roi,
+            roi_exclude=roi_exclude,
+            resample=True,
+        )
 
 
 def pipeline_bids(
@@ -493,6 +581,12 @@ def pipeline_bids(
     evaluate_reconstructed=True,
     non_strict_mode=False,
     vibe_from_signal=True,
+    stop_after_signal_prior=False,
+    MagneticFieldStrength=3.0,
+    alpha_p=None,
+    freqs_ppm=None,
+    use_rician=True,
+    reconstruction_name: str | None = None,
 ) -> Result:
     args = {
         "file_type": "nii.gz",
@@ -503,6 +597,7 @@ def pipeline_bids(
         "make_parent": False,
         "non_strict_mode": non_strict_mode,
     }
+    args["info"]["rec"] = reconstruction_name
     args["info"]["part"] = "water"
     out_reconstruction_water = water_image.get_changed_path(**args)
     args["info"]["part"] = "fat"
@@ -518,16 +613,23 @@ def pipeline_bids(
     out_reconstruction_loss = water_image.get_changed_path(**args)
     args["info"]["part"] = "water"
     args["info"]["desc"] = None
+    args["info"]["rec"] = None
     args["info"]["seg"] = "fat-water-inversion-detection"
     out_detection_water = water_image.get_changed_path(**args)
+
     args["info"]["part"] = "fat"
+    args["info"]["desc"] = None
+    args["info"]["seg"] = "fat-water-inversion-detection"
     out_detection_fat = water_image.get_changed_path(**args)
+
     args["info"]["part"] = "water"
     args["bids_format"] = None
     args["info"]["seg"] = None
+    args["info"]["rec"] = None
     args["info"]["desc"] = "signal_prior"
     out_signal_prior_ = water_image.get_changed_path(**args)
     args["info"]["desc"] = "signal-prior"
+
     out_signal_prior = water_image.get_changed_path(**args)
     if out_signal_prior_.exists() and out_signal_prior_ != out_signal_prior:
         out_signal_prior_.rename(out_signal_prior)
@@ -535,9 +637,39 @@ def pipeline_bids(
     args["bids_format"] = "msk"
     args["info"]["desc"] = "reconstructed"
     args["info"]["seg"] = "fat-water-inversion-detection"
+    args["info"]["rec"] = reconstruction_name
     out_detection_water_reconstructed = fat_image.get_changed_path(**args)
     args["info"]["part"] = "fat"
     out_detection_fat_reconstructed = fat_image.get_changed_path(**args)
+    args = {
+        "file_type": "nii.gz",
+        "bids_format": "msk",
+        "parent": derivative_total,
+        "info": {"seg": "VIBESeg-100", "part": None, "mod": water_image.bids_format},
+        "make_parent": False,
+        "non_strict_mode": non_strict_mode,
+    }
+    total_vibe = water_image.get_changed_path(**args)
+    args = {
+        "file_type": "nii.gz",
+        "bids_format": "msk",
+        "parent": derivative_total,
+        "info": {"seg": "ROI", "part": None, "mod": water_image.bids_format},
+        "make_parent": False,
+        "non_strict_mode": non_strict_mode,
+    }
+    roi = water_image.get_changed_path(**args)
+    args = {
+        "file_type": "nii.gz",
+        "bids_format": "msk",
+        "parent": derivative_total,
+        "info": {"seg": "TotalVibeSegmentator", "part": None, "mod": water_image.bids_format},
+        "make_parent": False,
+        "non_strict_mode": non_strict_mode,
+    }
+    total_vibe2 = water_image.get_changed_path(**args)
+    if total_vibe2.exists():
+        total_vibe = total_vibe2
     args = {
         "file_type": "nii.gz",
         "bids_format": "msk",
@@ -546,9 +678,70 @@ def pipeline_bids(
         "make_parent": False,
         "non_strict_mode": non_strict_mode,
     }
-    total_vibe = water_image.get_changed_path(**args)
-    # total_vibe
+    total_vibe2 = water_image.get_changed_path(**args)
+    if total_vibe2.exists():
+        total_vibe = total_vibe2
+    # print(total_vibe2.exists())
+    ####### old name
+    args["bids_format"] = "msk"
+    args["parent"] = derivative
+    args["info"]["mod"] = water_image.format
+    args["info"]["part"] = None
+    args["info"]["seg"] = "water-fat-map"
+    old_name = water_image.get_changed_path(**args)
 
+    log = Print_Logger()
+    if old_name.exists():
+        log.on_save("rename", old_name, "->", out_detection_water)
+        old_name.rename(out_detection_water)
+    args["info"]["mod"] = None
+    #######
+    ####### old name
+    args["info"]["mod"] = water_image.format
+    args["info"]["desc"] = None
+    args["info"]["part"] = "fat"
+    args["info"]["seg"] = "water-fat-map"
+    old_name = water_image.get_changed_path(**args)
+    if old_name.exists():
+        log.on_save("rename", old_name, "->", out_detection_fat)
+        old_name.rename(out_detection_fat)
+    args["info"]["mod"] = None
+    #######
+    # print(out_detection_fat)
+    # exit()
+    # total_vibe
+    # print(
+    #    f"{s_magnitude=}\n",
+    #    f"{water_image=}\n",
+    #    f"{fat_image=}\n",
+    #    f"{out_reconstruction_water=}\n",
+    #    f"{out_reconstruction_fat=}\n",
+    #    f"{out_reconstruction_r2s=}\n",
+    #    f"{out_reconstruction_pdwf=}\n",
+    #    f"{out_reconstruction_pdff=}\n",
+    #    f"{total_vibe=}\n",
+    #    f"{out_detection_water=}\n",
+    #    f"{out_detection_fat=}\n",
+    #    f"{out_signal_prior=}\n",
+    #    f"{out_reconstruction_loss=}\n",
+    #    f"{out_detection_water_reconstructed=}\n",
+    #    f"{out_detection_fat_reconstructed=}\n",
+    #    f"{steps_signal_prior=}\n",
+    #    f"{override=}\n",
+    #    f"{ddevice=}\n",
+    #    f"{gpu=}\n",
+    #    f"{threshold_swapped_voxels=}\n",
+    #    f"{threshold_disagree_voxels=}\n",
+    #    f"{evaluate_reconstructed=}\n",
+    #    f"{vibe_from_signal=}\n",
+    #    f"{roi=}\n",
+    #    f"{stop_after_signal_prior=}\n",
+    #    f"{MagneticFieldStrength=}\n",
+    #    f"{alpha_p=}\n",
+    #    f"{freqs_ppm=}\n",
+    #    f"{use_rician=}\n",
+    # )
+    # exit()
     return pipeline(
         s_magnitude=s_magnitude,
         water_image=water_image,
@@ -573,13 +766,17 @@ def pipeline_bids(
         threshold_disagree_voxels=threshold_disagree_voxels,
         evaluate_reconstructed=evaluate_reconstructed,
         vibe_from_signal=vibe_from_signal,
+        roi=roi,
+        stop_after_signal_prior=stop_after_signal_prior,
+        MagneticFieldStrength=MagneticFieldStrength,
+        alpha_p=alpha_p,
+        freqs_ppm=freqs_ppm,
+        use_rician=use_rician,
     )
 
 
 if __name__ == "__main__":
     import os
-
-    from TPTBox import Print_Logger
 
     os.environ["CUDA_VISIBLE_DEVICES"] = "3"
     nako_dataset = "/media/data/NAKO/dataset-nako/"
