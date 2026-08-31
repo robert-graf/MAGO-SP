@@ -216,6 +216,10 @@ def recon_fat_water_model(
     alpha_p=None,
     freqs_ppm=None,
     use_rician=True,
+    use_gpu: bool = False,
+    gpu_device: str = "cuda",
+    gpu_iters: int = 100,
+    gpu_lr: float = 0.5,
 ):
     """
     MEVIBE:
@@ -308,7 +312,20 @@ def recon_fat_water_model(
         # MEVIBE
         # Perform multipeak fat model reconstruction
         print("no signal prior")
-        out_w, out_f, out_r, out_l = multipeak_fat_model_smooth(s_magnitude_arr, ti_ms=ti_ms, rician_loss=use_rician, **args)
+        if use_gpu:
+            from papers.vibe_inversion.recon_mevibe_gpu import multipeak_fat_model_smooth_torch
+
+            out_w, out_f, out_r, out_l = multipeak_fat_model_smooth_torch(
+                s_magnitude_arr,
+                ti_ms=ti_ms,
+                rician_loss=use_rician,
+                device=gpu_device,
+                n_iter=gpu_iters,
+                lr=gpu_lr,
+                **args,
+            )
+        else:
+            out_w, out_f, out_r, out_l = multipeak_fat_model_smooth(s_magnitude_arr, ti_ms=ti_ms, rician_loss=use_rician, **args)
         grid = to_nii(s_magnitude[0])  # just for the affine info
     else:
         # MEVIBE
@@ -321,9 +338,24 @@ def recon_fat_water_model(
         pd_sum = to_nii(water_image).get_array().astype(float) + to_nii(fat_image).get_array().astype(float)
         fat_prior = pd_sum - water_prior.get_array().astype(float)
         fat_prior[fat_prior < 0] = 0
-        out_w, out_f, out_r, out_l = multipeak_fat_model_from_guess(
-            s_magnitude_arr, water_prior.get_array(), fat_guess=fat_prior, ti_ms=ti_ms, rician_loss=use_rician, **args
-        )
+        if use_gpu:
+            from papers.vibe_inversion.recon_mevibe_gpu import multipeak_fat_model_from_guess_torch
+
+            out_w, out_f, out_r, out_l = multipeak_fat_model_from_guess_torch(
+                s_magnitude_arr,
+                water_prior.get_array(),
+                fat_guess=fat_prior,
+                ti_ms=ti_ms,
+                rician_loss=use_rician,
+                device=gpu_device,
+                n_iter=gpu_iters,
+                lr=gpu_lr,
+                **args,
+            )
+        else:
+            out_w, out_f, out_r, out_l = multipeak_fat_model_from_guess(
+                s_magnitude_arr, water_prior.get_array(), fat_guess=fat_prior, ti_ms=ti_ms, rician_loss=use_rician, **args
+            )
 
     out_w_nii = grid.set_array(out_w)
     out_f_nii = grid.set_array(out_f)
@@ -378,7 +410,7 @@ def pipeline(
     gpu=0,
     threshold_swapped_voxels=100,
     threshold_disagree_voxels=2000,
-    ti_ms: list[float] | None = None,
+    ti_ms: list[float] | None = None,  # ECHO TIMES IN MILLISECONDS. Converted to seconds before being handed to `recon_fat_water_model`.
     evaluate_reconstructed=True,
     vibe_from_signal=True,
     roi: str | Path | None = None,
@@ -389,6 +421,10 @@ def pipeline(
     alpha_p=None,
     freqs_ppm=None,
     use_rician=True,
+    use_gpu: bool = False,
+    gpu_device: str = "cuda",
+    gpu_iters: int = 100,
+    gpu_lr: float = 0.5,
 ) -> Result:
     """
     Pipeline for water-fat separation and reconstruction from MRI data.
@@ -490,6 +526,10 @@ def pipeline(
         signal_prior = predict_signal_prior(s_magnitude, out_signal_prior, steps_signal_prior, override, gpu, ddevice)
         if stop_after_signal_prior:
             return Result(original_swap_stat=swap_static, needs_correction=False)
+        # `ti_ms` is in milliseconds at this layer; convert to the seconds unit
+        # the multi-peak fat model actually needs (`freqs_hz * ti` must be
+        # dimensionless).
+        ti_s = [t / 1000.0 for t in ti_ms] if ti_ms is not None else None
         out_w_nii, out_f_nii, out_r_nii, out_l_nii = recon_fat_water_model(
             s_magnitude,
             water_image,
@@ -499,13 +539,17 @@ def pipeline(
             out_reconstruction_fat,
             out_reconstruction_r2s,
             out_reconstruction_loss,
-            ti_ms=ti_ms,
+            ti_ms=ti_s,
             override=override,
             vibe_from_signal=vibe_from_signal,
             MagneticFieldStrength=MagneticFieldStrength,
             alpha_p=alpha_p,
             freqs_ppm=freqs_ppm,
             use_rician=use_rician,
+            use_gpu=use_gpu,
+            gpu_device=gpu_device,
+            gpu_iters=gpu_iters,
+            gpu_lr=gpu_lr,
         )
         if out_reconstruction_pdwf is not None or out_reconstruction_pdff is not None:
             make_pdff_pdwf(out_w_nii, out_f_nii, out_reconstruction_pdff, out_reconstruction_pdwf)
@@ -587,6 +631,11 @@ def pipeline_bids(
     freqs_ppm=None,
     use_rician=True,
     reconstruction_name: str | None = None,
+    ti_ms: list[float] | None = None,  # Echo times in ms, one per entry of `s_magnitude`.
+    use_gpu: bool = False,
+    gpu_device: str = "cuda",
+    gpu_iters: int = 100,
+    gpu_lr: float = 0.5,
 ) -> Result:
     args = {
         "file_type": "nii.gz",
@@ -772,6 +821,11 @@ def pipeline_bids(
         alpha_p=alpha_p,
         freqs_ppm=freqs_ppm,
         use_rician=use_rician,
+        ti_ms=ti_ms,
+        use_gpu=use_gpu,
+        gpu_device=gpu_device,
+        gpu_iters=gpu_iters,
+        gpu_lr=gpu_lr,
     )
 
 

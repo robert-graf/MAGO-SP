@@ -1,5 +1,7 @@
 # MAGO-SP: Detection and Correction of Water-Fat Swaps in Magnitude-Only VIBE MRI
 
+Paper (MICCAI 2025, open access): <https://papers.miccai.org/miccai-2025/paper/0269_paper.pdf>
+
 The trained networks can be downloaded automatically.
 
 You find the MAGO-SP code in /papers/vibe_inversion
@@ -49,18 +51,21 @@ from mago_methods import (
 ### Water fat swap detection
 
 ```python
-from pipeline import detect_inversion_seg,make_swap_statistic_single
+from pipeline import detect_inversion_seg, make_swap_statistic_single
+
 # Paths
 name = "example_subject"
 out_phase = "PATH to out-phase"
-in_phase =  "PATH to in-phase"
+in_phase = "PATH to in-phase"
 water_image = "Path to water image (not the PDWF)"
 fat_image = "Path to fat image (not the PDFF)"
 # Compute detection
-water_detection, fat_detection = detect_inversion_seg(out_phase, in_phase, water_image, fat_image, out_detection_water="water_msk.nii.gz", out_detection_fat="fat_msk.nii.gz", override=False, ddevice="cuda", gpu=0)
+water_detection, fat_detection = detect_inversion_seg(
+    out_phase, in_phase, water_image, fat_image, out_detection_water="water_msk.nii.gz", out_detection_fat="fat_msk.nii.gz", override=False, ddevice="cuda", gpu=0
+)
 swap_static = make_swap_statistic_single(name, water_detection, fat_detection, total_vibe=None)
 
-print(f"{swap_static.percent*100:.2f} % of the image is swapped")    
+print(f"{swap_static.percent * 100:.2f} % of the image is swapped")
 ```
 
 ```python
@@ -105,9 +110,9 @@ def predict_signal_prior(
 ## Full Pipeline
 
 ```python
-from pipeline import pipeline_bids,pipeline
+from pipeline import pipeline_bids, pipeline
 
-#pipeline_bids automatic generates BIDS names, if the input name is BIDS compliant.
+# pipeline_bids automatic generates BIDS names, if the input name is BIDS compliant.
 
 # Note:
 #    ti_ms and s_magnitude must be in the same order.
@@ -178,5 +183,89 @@ from pipeline import pipeline_bids,pipeline
         - For VIBE, `s_magnitude` typically includes outphase and inphase images.
         - This function attempts to minimize manual intervention through automated correction.
     """
-
 ```
+
+## Fat-peak models
+
+MEVIBE reconstruction fits a multi-peak fat spectrum. Both `pipeline` and `pipeline_bids` accept the peak model through three kwargs, all passed straight through to `recon_fat_water_model` → `multipeak_fat_model_*`:
+
+```python
+pipeline_bids(
+    s_magnitude=[eco0, eco1, eco2, eco3, eco4, eco5],
+    water_image=water,
+    fat_image=fat,
+    ti_ms=[1.14, 1.99, 2.85, 3.70, 4.55, 5.41],  # milliseconds; converted to seconds internally
+    MagneticFieldStrength=3.0,  # Tesla (used to convert ppm → Hz)
+    freqs_ppm=numpy.array([...]),  # chemical shifts of each peak
+    alpha_p=numpy.array([...]),  # relative amplitudes, same length as freqs_ppm
+    use_gpu=True,                 # opt-in PyTorch batched fit — see "GPU acceleration" below
+)
+```
+
+- Both arrays must have the same length; `alpha_p` typically sums to ~1.
+- The active default set in `recon_mevibe.py` is now **Zhong 7-peak** (liver). The **MAGO-SP paper** results were produced with **Ren marrow (9-peak)** — that set is still in the file, just as a commented alternate. Bring your own for liver, subcutaneous fat, brown adipose, phantom, or scanner-specific calibrations.
+
+These are some examples for Water-Fat-Models we where using. Pick one that matches your tissue of interest, or drop in your own set. Each entry is either the active default in `papers/vibe_inversion/recon_mevibe.py` or a commented alternate in the same file / in `papers/vibe_inversion/notebook/estemate_rican_sigma.ipynb`.
+
+| Name | Peaks | Validated on | `freqs_ppm` | `alpha_p` | Source |
+|---|---|---|---|---|---|
+| **Ren marrow** (MAGO-SP paper default) | 9 | bone marrow & subcutaneous adipose tissue | `[-3.8, -3.4, -3.1, -2.68, -2.46, -1.95, -0.5, 0.49, 0.59]` | `[0.08991, 0.58342, 0.05994, 0.08492, 0.05994, 0.01499, 0.03996, 0.00999, 0.05694]` | Ren et al., *J Lipid Res* 2008 — <https://doi.org/10.1194/jlr.D700041-JLR200>; `+0.05 ppm` shift variant used in `tests/run_mevibe_test.py` — <https://doi.org/10.1002/jmri.25453> |
+| **Hamilton liver** | 9 | in vivo human liver | same 9 shifts as Ren | `[0.088, 0.642, 0.058, 0.062, 0.058, 0.006, 0.039, 0.01, 0.037]` | Hamilton et al., *NMR Biomed* 2011 — <https://doi.org/10.1002/nbm.1622> |
+| **Hernando** | 6 | in vivo human liver (R2* / iron overload) | `[-3.9, -3.5, -2.7, -2.04, -0.49, 0.50]` | `[0.087, 0.694, 0.128, 0.004, 0.039, 0.048]` | Hernando et al., *MRM* 2013 — <https://doi.org/10.1002/mrm.24593> |
+| **UKBB v1** | 6 | in vivo human liver (UK Biobank cohort) | `[5.20, 4.21, 2.66, 2.00, 1.20, 0.80]` | `[0.048, 0.039, 0.004, 0.128, 0.694, 0.087]` | MAGO — Triay Bagur et al., *MRM* 2019 — <https://doi.org/10.1002/mrm.27728> |
+| **UKBB v2** | 6 | in vivo human liver (UK Biobank cohort) | same 6 shifts as UKBB v1 | `[0.047, 0.039, 0.006, 0.12, 0.7, 0.088]` | MAGO — Triay Bagur et al., *MRM* 2019 — <https://doi.org/10.1002/mrm.27728> |
+| **Zhong 7-peak** (current default) | 7 | in vivo human liver (PDFF + R2*) | `[-3.73, -3.33, -3.04, -2.60, -2.38, -1.86, 0.68]` | `[0.08, 0.63, 0.07, 0.09, 0.07, 0.02, 0.04]` | Zhong et al., *MRM* 2014 — <https://doi.org/10.1002/mrm.25054> |
+
+> **Disclaimer:** Please check the paper yourself, to not miss details.
+
+For a visual side-by-side comparison of the Water-Fat models above on 6-Point NAKO, see our ECR 2026 poster: <https://epos.myesr.org/poster/esr/ecr2026/C-24425>
+
+
+### Sign convention gotcha
+
+`freqs_ppm` is used inside `get_freqs_hz(freqs_ppm, MagneticFieldStrength)` and multiplied by the scanner center frequency directly. Two conventions exist in the wild — shifts relative to water (0 ppm) or relative to TMS (~4.7 ppm). The `Ren`/`Hamilton`/`Hernando`/`Zhong` sets above are **water-referenced** (mostly negative values, methyl-methylene near 0 ppm as small positive lobe). The `UKBB` and `Alt-6` sets are **TMS-referenced** — the `tests/run_mevibe_test.py` file subtracts `4.7` from them precisely to convert. If you drop a set in from a new paper without checking, you can silently get everything ~600 Hz off at 3 T.
+
+### `use_rician`
+
+Same layer also exposes `use_rician=True|False`. `True` (default) fits with a Rician log-likelihood — this is what makes the method "MAGO*RINO*"; `False` collapses back to Gaussian residual ("MAGO"). See `notebook/compare_fatmodel.ipynb` for the naming.
+
+### `ti_ms` — echo times
+
+`pipeline` and `pipeline_bids` both take `ti_ms: list[float] | None`. The values are echo times in **milliseconds** — converted to seconds by `pipeline` before being handed to `recon_fat_water_model`, because the signal model computes `exp(1j·2π·f_Hz·t)` and needs `t` in seconds. Order must match `s_magnitude`. `None` uses the built-in default (`recon_mevibe.ti_ms_default`, six echoes at 1.23–7.38 ms).
+
+### GPU acceleration (`use_gpu`)
+
+The per-voxel `scipy.optimize.least_squares` fit is now optionally routed through a batched PyTorch implementation in `papers/vibe_inversion/recon_mevibe_gpu.py`. Set `use_gpu=True` on `pipeline` or `pipeline_bids` to enable it:
+
+```python
+pipeline_bids(
+    ...,
+    use_gpu=True,          # off by default
+    gpu_device="cuda",     # or "cuda:1", "cpu", "mps"
+    gpu_iters=100,         # Adam iterations
+    gpu_lr=0.5,            # Adam learning rate
+)
+```
+
+- Same signal model, same peak arrays, same Rician / Gaussian loss — the maths mirrors `multipeak_fat_model_from_guess` and `multipeak_fat_model_smooth` one-for-one.
+- Two initial guesses (fat-dominant and water-dominant) run as two batched Adam passes; the lower-loss branch wins per voxel, matching the CPU behaviour.
+- Parameters are clamped to `[0, 1000]` at every step (same range as the CPU `dogbox` bounded fit).
+- Speedup grows with volume size — a ~10 M-voxel body-composition volume is minutes on CPU and seconds on GPU.
+- Falls back cleanly to CPU by setting `use_gpu=False` (the default) or `gpu_device="cpu"`.
+
+Reproducing the paper: leave `use_gpu=False`. The GPU path is a numerical rewrite (batched Adam vs. per-voxel Levenberg-Marquardt); results agree within noise on the phantom test but are not bit-exact. Not recommended when the exact CPU numbers are the deliverable.
+
+### Configuring the peak model without going through the pipeline
+
+If you want the fit but not the detection/DL layers, `papers/vibe_inversion/mago_methods.py` exposes standalone `mago(...)`, `magorino(...)`, `mago_sp(...)` (and `*_ISMRM` variants for ISMRM fat-water-toolbox test data). Each takes the same `alpha_p` / `freqs_ppm` / `MagneticFieldStrength` / `ti_ms` / `use_rician` kwargs and forwards them to `multipeak_fat_model_*`. Handy for benchmarking a new peak set on a single image without invoking the full pipeline.
+
+The GPU fit is also usable without the pipeline. Import it directly:
+
+```python
+from papers.vibe_inversion.recon_mevibe_gpu import (
+    multipeak_fat_model_from_guess_torch,  # refinement fit from a water/fat prior
+    multipeak_fat_model_smooth_torch,       # two-guess fit + loss-smoothed selection
+)
+```
+
+Both accept the same `alpha_p` / `freqs_ppm` / `MagneticFieldStrength` / `ti_ms` / `rician_loss` / `sigma` kwargs as the CPU functions, plus `device`, `n_iter`, `lr`.

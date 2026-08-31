@@ -129,33 +129,61 @@ def _inference(
 ):
     batch_size = next(iter(batch.values())).size(0)  # Assuming all inputs have the same batch size
     batch = {k: pad_to_divisible_by_16(v.to(model.device)) for k, v in batch.items()}
-    peak_memory = torch.cuda.max_memory_allocated()
-    total_memory = torch.cuda.get_device_properties(0).total_memory - peak_memory
-    sub_batch_size = max(1, int(total_memory * 1.4) // 10**9)
+    # Estimate sub-batch size from currently free GPU RAM (not the "ever
+    # allocated" high-water mark, which under-estimates free memory badly
+    # after the first call and lets the multiplier below OOM the sampler).
+    # `mem_get_info` returns (free, total) in bytes for the current device.
+    if str(model.device).startswith("cuda"):
+        try:
+            device_idx = model.device.index if getattr(model.device, "index", None) is not None else 0
+            free_bytes, _total_bytes = torch.cuda.mem_get_info(device_idx)
+        except Exception:  # noqa: BLE001
+            free_bytes = torch.cuda.get_device_properties(0).total_memory
+        # ~1 GiB per sub-batch item, halve for a safety margin against fragmentation.
+        sub_batch_size = max(1, int(free_bytes * 0.5) // 10**9)
+    else:
+        sub_batch_size = batch_size  # CPU has no such limit
     print(f"Estimated sub-batch size: {sub_batch_size}")
 
-    # Process sub-batches
+    # Process sub-batches. On CUDA OOM, halve the sub-batch and retry down to 1;
+    # frees fragmented cache between tries so the estimator's guess is only a hint.
     results = []
-    for i in range(0, batch_size, sub_batch_size):
-        sub_batch = {k: v[0][i : i + sub_batch_size] for k, v in batch.items()}
-
-        with torch.autocast(device_type=str(ddevice), dtype=torch.float16):
-            key = next(iter(sub_batch.keys()))
-            shape = sub_batch[key].shape
-            with model.ema_scope("Plotting"):
-                model.clamp = (-1, 1)
-                samples = model.sample(
-                    sub_batch,
-                    batch_size=shape[0],
-                    return_intermediates=False,
-                    ddim=True,
-                    ddim_steps=ddim_steps,
-                    shape=shape,
-                    # clamp=lambda x: torch.clamp(x, -1, 1),
-                )
-
-                samples = crop_to_original(samples, batch[key][1])
+    i = 0
+    while i < batch_size:
+        step = sub_batch_size
+        while True:
+            sub_batch = {k: v[0][i : i + step] for k, v in batch.items()}
+            try:
+                with torch.autocast(device_type=str(ddevice), dtype=torch.float16):
+                    key = next(iter(sub_batch.keys()))
+                    shape = sub_batch[key].shape
+                    with model.ema_scope("Plotting"):
+                        model.clamp = (-1, 1)
+                        samples = model.sample(
+                            sub_batch,
+                            batch_size=shape[0],
+                            return_intermediates=False,
+                            ddim=True,
+                            ddim_steps=ddim_steps,
+                            shape=shape,
+                            # clamp=lambda x: torch.clamp(x, -1, 1),
+                        )
+                        # DDIM sampler in networks/models/diffusion/utils/ddim_sampler.py
+                        # ignores `return_intermediates` and always returns
+                        # `(samples, intermediates)`; drop the intermediates.
+                        if isinstance(samples, tuple):
+                            samples = samples[0]
+                        samples = crop_to_original(samples, batch[key][1])
+                break
+            except torch.cuda.OutOfMemoryError:
+                torch.cuda.empty_cache()
+                if step == 1:
+                    raise
+                step = max(1, step // 2)
+                print(f"CUDA OOM at sub-batch {sub_batch_size}; retrying with {step}")
         results.append((samples + 1) * 500)
+        i += step
+        sub_batch_size = step  # stick with the smaller size for the remaining slices
 
     # Merge results
     merged = torch.cat(results, dim=0)

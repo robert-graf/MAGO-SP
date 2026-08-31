@@ -9,12 +9,16 @@ from tqdm import tqdm
 from tqdm_joblib import tqdm_joblib
 
 # Constants (adjust these based on your system and acquisition parameters)
-freqs_ppm = np.array([-3.8, -3.4, -3.1, -2.68, -2.46, -1.95, -0.5, 0.49, 0.59])
+# Active default: Zhong 7-peak liver model (MRM 2014, https://doi.org/10.1002/mrm.25054).
+# This matches the peak set used for the NAKO batch runs in image2image.
+freqs_ppm = np.array([-3.73, -3.33, -3.04, -2.60, -2.38, -1.86, 0.68])  # Zhong et al., MRM 2014
+# freqs_ppm = np.array([-3.8, -3.4, -3.1, -2.68, -2.46, -1.95, -0.5, 0.49, 0.59])  # Ren marrow — default in the MAGO-SP paper
 # freqs_ppm = np.array([5.20, 4.21, 2.66, 2.00, 1.20, 0.80])
 # freqs_ppm = np.array([5.30, 4.20, 2.75, 2.10, 1.30, 0.90])
 # freqs_ppm = np.array([-3.9, -3.5, -2.7, -2.04, -0.49, 0.50])  # Hernando et al.
 
-alpha_p = np.array([0.08991009, 0.58341658, 0.05994006, 0.08491508, 0.05994006, 0.01498501, 0.03996004, 0.00999001, 0.05694306])
+alpha_p = np.array([0.08, 0.63, 0.07, 0.09, 0.07, 0.02, 0.04])  # Zhong et al., MRM 2014
+# alpha_p = np.array([0.08991009, 0.58341658, 0.05994006, 0.08491508, 0.05994006, 0.01498501, 0.03996004, 0.00999001, 0.05694306])  # Ren marrow — default in the MAGO-SP paper
 # alpha_p = np.array([0.048, 0.039, 0.004, 0.128, 0.694, 0.087]) #UKBB
 # alpha_p = np.array([0.047, 0.039, 0.006, 0.12, 0.7, 0.088]) #UKBB
 # alpha_p = np.array([0.087, 0.694, 0.128, 0.004, 0.039, 0.048])  # Hernando et al.
