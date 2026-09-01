@@ -1,46 +1,46 @@
-[build-system]
-requires = ["poetry-core>=1.0.0", "poetry-dynamic-versioning>=1.0.0,<2.0.0"]
-build-backend = "poetry_dynamic_versioning.backend"
-
-[tool.poetry]
-name = "SPINEPS"
-version = "1.0.0"
-description = "Framework for out-of-the box whole spine MRI segmentation."
-authors = ["Hendrik Möller <hendrik.moeller@tum.de>"]
-repository = "https://github.com/Hendrik-code/spineps"
-homepage = "https://github.com/Hendrik-code/spineps"
-license = "Apache License Version 2.0, January 2004"
+[project]
+name = "mago-sp"
+version = "0.0.0"
+description = "MAGO-SP: Detection and Correction of Water-Fat Swaps in Magnitude-Only VIBE MRI. See papers/vibe_inversion/pipeline.py for the entry points."
+requires-python = ">=3.10"
 readme = "README.md"
-exclude = ["models", "examples"]
+license = { text = "Apache License Version 2.0, January 2004" }
+authors = [
+    { name = "Robert Graf", email = "robert.graf@tum.de" },
+    { name = "Hendrik Möller", email = "hendrik.moeller@tum.de" },
+]
 
-[tool.poetry.scripts]
-spineps = 'spineps.entrypoint:entry_point'
+# MAGO-SP is not published on PyPI — the intended install is a sibling clone
+# next to the caller repo (see GLP1/README.md). These are the direct third-party
+# runtime deps; version-pinning is intentionally lax because the repo works
+# against whatever PyTorch + TPTBox the caller has already installed.
+dependencies = [
+    "TPTBox",
+    "torch",
+    "numpy",
+    "scipy",
+    "nibabel",
+    "joblib",
+    "numba",
+    "tqdm",
+    "tqdm-joblib",
+    "einops",
+    "omegaconf",
+    "packaging",
+    "Pillow",
+    "pytorch-lightning",
+    "torchmetrics",
+    "torchvision",
+    "nnunetv2",
+]
 
-[tool.poetry.dependencies]
-python = "^3.10 || ^3.11"
-connected-components-3d = "^3.12.3"
-fill-voids = "^2.0.5"
-nibabel = "^5.1.0"
-numpy = "^1.25.2"
-pathlib = "^1.0.1"
-pytorch-lightning = "^2.0.8"
-SciPy = "^1.11.2"
-torchmetrics = "^1.1.2"
-tqdm = "^4.66.1"
-einops= "^0.6.1"
-nnunetv2 = "2.2"
-tptbox = "*"
-antspyx = "*"
-rich = "^13.6.0"
-
-
-[tool.poetry-dynamic-versioning]
-enable = true
-
+[project.urls]
+paper = "https://papers.miccai.org/miccai-2025/paper/0269_paper.pdf"
+poster = "https://epos.myesr.org/poster/esr/ecr2026/C-24425"
 
 [tool.ruff]
-namespace-packages = ["datagen"]
 exclude = [
+    "*.ipynb",
     ".bzr",
     ".direnv",
     ".eggs",
@@ -62,25 +62,19 @@ exclude = [
     "dist",
     "node_modules",
     "venv",
-    ".toml",
-    ".ipynb"
-] 
-line-length = 170
+    "logs",
+]
+line-length = 140
 indent-width = 4
 target-version = "py310"
 
 [tool.ruff.lint]
-## Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`)  codes by default.
-## Unlike Flake8, Ruff doesn't enable pycodestyle warnings (`W`) or
-## McCabe complexity (`C901`) by default.
-#
 select = [
     "E",
     "F",
     "W",
     "C901",
     "I",
-    #"N", pep8-naming (us full for BIDS but not this repo)
     "UP",
     "ASYNC",
     "BLE",
@@ -92,17 +86,13 @@ select = [
     "INP",
     "PIE",
     "PYI",
-    "RET",
     "SIM",
     "TID",
     "INT",
     "ARG",
-    "TD",
+    "TD005",
     "FIX003",
     "FIX004",
-    #"ERA", For clean up
-    #"D", Dockstring For clean up
-    #"ANN", Annoation For clean up
     "PD",
     "PGH",
     "PL",
@@ -115,76 +105,56 @@ select = [
     "RUF",
 ]
 
-
 ignore = [
-    "INP001",
-    "SIM112",
+    "C901",
+    "RUF002",
+    "RUF059",
+    "RUF100",
     "F401",
     "BLE001",
     "E501",
     "N801",
+    "N802",
+    "N803",
+    "N806",
+    "N999",
+    "E741",
+    "F811",
+    "SIM105",
+    "SIM112",
+    "SIM118",
     "PD002",
     "PERF203",
-    "PTH123",
     "PGH003",
+    "PLC0415",
     "PLR0911",
     "PLR0912",
     "PLR0913",
     "PLR0915",
+    "PLR0917",
     "PLR2004",
-    "SIM105",
+    "PLW0108",
+    "PTH123",
     "TRY003",
-    "UP038",
-    "N999","E741",
-    "SIM118", # dictionay keys
-    "N802", # function name lowercase
+    "TRY301",
     "NPY002",
+    "FURB171",
+    "B905",
+    "UP007",
+    "INP001",
 ]
 
-# Allow fix for all enabled rules (when `--fix`) is provided.
 fixable = ["ALL"]
 unfixable = []
-ignore-init-module-imports = true
-extend-safe-fixes = ["RUF015","C419","C408","B006"]
-#unnecessary-iterable-allocation-for-first-element = true 
+extend-safe-fixes = ["RUF015", "C419", "C408", "B006"]
 
-
-
-# Allow unused variables when underscore-prefixed.
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
 [tool.ruff.lint.mccabe]
-# Flag errors (`C901`) whenever the complexity level exceeds 5.
 max-complexity = 20
 
-
 [tool.ruff.format]
-# Like Black, use double quotes for strings.
 quote-style = "double"
-
-# Like Black, indent with spaces, rather than tabs.
 indent-style = "space"
-
-# Like Black, respect magic trailing commas.
 skip-magic-trailing-comma = false
-
-
-
-
-# Like Black, automatically detect the appropriate line ending.
 line-ending = "auto"
-# Add this to your setting.json (user)
-# Ctrl+shift+P settings json 
-#"[python]": {
-#        "editor.formatOnSave": true,
-#        "editor.defaultFormatter": "charliermarsh.ruff",
-#        "editor.codeActionsOnSave": {
-#          "source.fixAll": true,
-#          "source.organizeImports": true
-#        }
-#      },
-#    "notebook.formatOnSave.enabled": true,
-#    "notebook.codeActionsOnSave": {
-#        "source.fixAll": true,
-#        "source.organizeImports": false
-#    },
