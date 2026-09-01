@@ -6,14 +6,15 @@ import torch
 from TPTBox import NII, Image_Reference, to_nii
 from TPTBox.segmentation.VibeSeg.auto_download import _download
 
-root = str(Path(__file__).parents[2])
-sys.path.append(root)
-import networks
-import networks.models
-import networks.models.diffusion
-import networks.models.diffusion.ddpm
 from utils.config_loading import instantiate_from_config
 from utils.reload import get_config, get_device
+
+root = str(Path(__file__).parents[2])
+sys.path.append(root)
+import networks  # noqa: E402
+import networks.models  # noqa: E402
+import networks.models.diffusion  # noqa: E402
+import networks.models.diffusion.ddpm  # noqa: E402
 
 
 def _norm_input(s_magnitude: Sequence[Image_Reference], cond, is_3d=False):

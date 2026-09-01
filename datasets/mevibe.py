@@ -35,10 +35,10 @@ class MEVIBE_dataset(BaseDataset):
         zoom_min=0.8,
         zoom_max=1.2,
         padding="constant",
-        split_file=Path(os.environ.get("DATASET_NAKO", ""), "notes/nako_split.xlsx"),
-        black_list=Path(os.environ.get("DATASET_NAKO", ""), "notes/water_fat_inversion_mevibe.xlsx"),
-        dataset_path=Path(os.environ.get("DATASET_NAKO", ""), "dataset-nako/training_data/mevibe/"),
-        nako_dataset=Path(os.environ.get("DATASET_NAKO", ""), "dataset-nako"),
+        split_file=Path(os.environ.get("DATASET_NAKO", ""), "notes/nako_split.xlsx"),  # noqa: B008
+        black_list=Path(os.environ.get("DATASET_NAKO", ""), "notes/water_fat_inversion_mevibe.xlsx"),  # noqa: B008
+        dataset_path=Path(os.environ.get("DATASET_NAKO", ""), "dataset-nako/training_data/mevibe/"),  # noqa: B008
+        nako_dataset=Path(os.environ.get("DATASET_NAKO", ""), "dataset-nako"),  # noqa: B008
         create_dataset=False,
         num_slices=2,
     ):
@@ -87,7 +87,7 @@ class MEVIBE_dataset(BaseDataset):
     def __len__(self):
         return len(self.file_list)
 
-    def load_file(self, path: Path | str, default_key="img", norm=True):
+    def load_file(self, path: Path | str, default_key="img", norm=True):  # noqa: ARG002
         path = str(path)
         end = path.split(".")[-1]
         dict_mods = {}
@@ -102,7 +102,7 @@ class MEVIBE_dataset(BaseDataset):
                 dict_mods[k] = v
             f.close()  # type: ignore
             return dict_mods
-        assert False
+        raise AssertionError(end)
 
     def __getitem__(self, i):
         path = self.dataset_path / self.file_list[i]

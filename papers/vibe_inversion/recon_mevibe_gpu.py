@@ -111,10 +111,7 @@ def _fit_batch(
     for _ in range(n_iter):
         opt.zero_grad(set_to_none=True)
         pred = _predict(theta, ti_row, fr_row, fi_row)
-        if rician:
-            loss = _rician_neg_loglik_torch(s_target, pred, sigma).sum()
-        else:
-            loss = ((pred - s_target) ** 2).sum()
+        loss = _rician_neg_loglik_torch(s_target, pred, sigma).sum() if rician else ((pred - s_target) ** 2).sum()
         if not torch.isfinite(loss):
             # Loss blew up — leave theta at its last finite state, bail.
             break

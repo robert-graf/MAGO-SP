@@ -103,7 +103,7 @@ def make_sample(idx, out_base: Path, data):
     np.random.seed(idx)
     while True:
         try:
-            out = get_all_files_of_subj(sub_list[idx])  # TODO Load known-good data
+            out = get_all_files_of_subj(sub_list[idx])  # pyright: ignore[reportUndefinedVariable] # TODO Load known-good data  # noqa: F821
             if idx % 2 == 0:
                 if "water" in out:
                     water_fraction = out["water"]
@@ -200,7 +200,7 @@ def make_sample(idx, out_base: Path, data):
         raise
 
 
-def run_make_ds(n, idx, make_sample=make_sample, cpu=os.cpu_count() // 2 + 3, setting=None):
+def run_make_ds(n, idx, make_sample=make_sample, cpu=os.cpu_count() // 2 + 3, setting=None):  # type: ignore  # noqa: B008
     """
     Generate a full synthetic dataset and save in nnUNet format.
 

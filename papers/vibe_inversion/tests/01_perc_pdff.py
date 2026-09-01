@@ -176,8 +176,6 @@ def reload(key):
     return None
 
 
-import random
-
 # random.seed(42)
 # random.shuffle(c.subjects)
 # print(c.subjects[:100])

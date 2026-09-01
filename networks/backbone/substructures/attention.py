@@ -8,6 +8,7 @@ import torch.nn.functional as F
 from einops import rearrange, repeat
 from torch import einsum, nn
 
+from networks.backbone.openaimodel import QKVAttention
 from networks.backbone.substructures.nd_layers import checkpoint, conv_nd
 
 T = TypeVar("T")
@@ -20,7 +21,6 @@ except Exception:
     XFORMERS_IS_AVAILBLE = False
 
 # CrossAttn precision handling
-import os
 
 _ATTN_PRECISION = os.environ.get("ATTN_PRECISION", "fp32")
 

@@ -23,6 +23,7 @@ Assumptions:
 Adjust `LOW_SIGNAL_THRESHOLD`, `MIN_VOXELS_PER_ORG`, and `MAX_SAMPLES` for your data.
 """
 
+import csv
 import math
 import os
 import random
@@ -60,7 +61,7 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 def pipeline_bids(
     water_image: BIDS_FILE,
-    fat_image: BIDS_FILE,
+    fat_image: BIDS_FILE,  # noqa: ARG001
     derivative="derivatives_inversion",
     derivative_total="derivatives_Abdominal-Segmentation",
     non_strict_mode=False,
@@ -86,7 +87,7 @@ def pipeline_bids(
     out_reconstruction_pdff = water_image.get_changed_path(**args)
     args["info"]["part"] = "recon-loss"
     args["bids_format"] = "msk"
-    out_reconstruction_loss = water_image.get_changed_path(**args)
+    # out_reconstruction_loss = water_image.get_changed_path(**args)
     args["info"]["part"] = "water"
     args["info"]["desc"] = None
     args["info"]["seg"] = "fat-water-inversion-detection"
@@ -110,9 +111,9 @@ def pipeline_bids(
     args["bids_format"] = "msk"
     args["info"]["desc"] = "reconstructed"
     args["info"]["seg"] = "fat-water-inversion-detection"
-    out_detection_water_reconstructed = fat_image.get_changed_path(**args)
+    # out_detection_water_reconstructed = fat_image.get_changed_path(**args)
     args["info"]["part"] = "fat"
-    out_detection_fat_reconstructed = fat_image.get_changed_path(**args)
+    # out_detection_fat_reconstructed = fat_image.get_changed_path(**args)
     args = {
         "file_type": "nii.gz",
         "bids_format": "msk",
@@ -130,7 +131,7 @@ def pipeline_bids(
         "make_parent": False,
         "non_strict_mode": non_strict_mode,
     }
-    roi = water_image.get_changed_path(**args)
+    # roi = water_image.get_changed_path(**args)
     args = {
         "file_type": "nii.gz",
         "bids_format": "msk",
@@ -441,10 +442,6 @@ def aggregate_stats(results_by_model: dict, organ_list: list[str]):
             }
         stats[model_name] = model_stats
     return stats
-
-
-import csv
-import os
 
 
 def print_latex_table(
@@ -777,7 +774,6 @@ def main():
         119588,
         # 119880,
     ]
-    subs = subs
     recons = [
         # ("Ren et Al. + 0.05", "derivatives_inversion_test_campi2"),
         ("Hamilton et Al.", "derivatives_inversion_test_Hamilton"),

@@ -54,8 +54,8 @@ class ControlLDM(LatentDiffusion):
             num_heads=m.num_heads,
             use_spatial_transformer=m.use_spatial_transformer,
             transformer_depth=m.transformer_depth,
-            context_dim=m.context_dim,  # TODO
-            use_checkpoint=m.use_checkpoint,  # TODO
+            context_dim=m.context_dim,
+            use_checkpoint=m.use_checkpoint,
         )
         # self.control_model = instantiate_from_config(control_stage_config)
         self.control_key = control_key
@@ -105,13 +105,13 @@ class ControlLDM(LatentDiffusion):
         sample=True,
         ddim_steps=50,
         ddim_eta=0.0,
-        return_keys=None,
-        quantize_denoised=True,
-        inpaint=True,
+        return_keys=None,  # noqa: ARG002
+        quantize_denoised=True,  # noqa: ARG002
+        inpaint=True,  # noqa: ARG002
         plot_denoise_rows=False,
-        plot_progressive_rows=True,
+        plot_progressive_rows=True,  # noqa: ARG002
         plot_diffusion_rows=False,
-        unconditional_guidance_scale=9.0,
+        unconditional_guidance_scale=9.0,  # noqa: ARG002
         **_kwargs,
     ):
         use_ddim = ddim_steps is not None

@@ -173,7 +173,7 @@ recons = [
 
 def pipeline_bids(
     water_image: BIDS_FILE,
-    fat_image: BIDS_FILE,
+    fat_image: BIDS_FILE,  # noqa: ARG001
     derivative="derivatives_inversion",
     derivative_total="derivatives_Abdominal-Segmentation",
     non_strict_mode=False,
@@ -199,7 +199,7 @@ def pipeline_bids(
     out_reconstruction_pdff = water_image.get_changed_path(**args)
     args["info"]["part"] = "recon-loss"
     args["bids_format"] = "msk"
-    out_reconstruction_loss = water_image.get_changed_path(**args)
+    # out_reconstruction_loss = water_image.get_changed_path(**args)
     args["info"]["part"] = "water"
     args["info"]["desc"] = None
     args["info"]["seg"] = "fat-water-inversion-detection"
@@ -223,9 +223,9 @@ def pipeline_bids(
     args["bids_format"] = "msk"
     args["info"]["desc"] = "reconstructed"
     args["info"]["seg"] = "fat-water-inversion-detection"
-    out_detection_water_reconstructed = fat_image.get_changed_path(**args)
+    # out_detection_water_reconstructed = fat_image.get_changed_path(**args)
     args["info"]["part"] = "fat"
-    out_detection_fat_reconstructed = fat_image.get_changed_path(**args)
+    # out_detection_fat_reconstructed = fat_image.get_changed_path(**args)
     args = {
         "file_type": "nii.gz",
         "bids_format": "msk",
@@ -243,7 +243,7 @@ def pipeline_bids(
         "make_parent": False,
         "non_strict_mode": non_strict_mode,
     }
-    roi = water_image.get_changed_path(**args)
+    # roi = water_image.get_changed_path(**args)
     args = {
         "file_type": "nii.gz",
         "bids_format": "msk",
@@ -313,14 +313,14 @@ if __name__ == "__main__":
     needs_manuel_intervention = 0
     needs_correction = 0
 
-    for e, sub in enumerate(subs):
+    for sub in subs:
         batch_niis = get_mevibe_dict(sub)
         if batch_niis is None:
             continue
 
         s = str(sub)
-        for water_fat_model_name, derivative, freqs_ppm, alpha_p in recons:
-            for sequ, batch_nii in batch_niis.items():
+        for water_fat_model_name, derivative, freqs_ppm, alpha_p in recons:  # noqa: B007
+            for batch_nii in batch_niis.values():
                 if batch_nii is None:
                     continue
                 try:
@@ -358,6 +358,6 @@ if __name__ == "__main__":
                         print(f"{idx.name:40}{(pdff_new).mean(where=l):.5}\t; {ref:.5}")
                 except Exception:
                     Print_Logger().print_error()
-                exit()
+
     print()
     print()

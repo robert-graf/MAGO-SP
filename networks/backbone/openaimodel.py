@@ -38,7 +38,7 @@ class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
     support it as an extra input.
     """
 
-    def forward(self, x, emb, context=None, first=False):
+    def forward(self, x, emb, context=None, first=False):  # noqa: ARG002
         for layer in self:
             if isinstance(layer, TimestepBlock):
                 x = layer(x, emb)
@@ -598,9 +598,9 @@ class UNetModel(nn.Module):
         """
         Convert the torso of the model to float16.
         """
-        self.input_blocks.apply(convert_module_to_f16)
-        self.middle_block.apply(convert_module_to_f16)
-        self.output_blocks.apply(convert_module_to_f16)
+        self.input_blocks.apply(convert_module_to_f16)  # noqa: F821
+        self.middle_block.apply(convert_module_to_f16)  # noqa: F821
+        self.output_blocks.apply(convert_module_to_f16)  # noqa: F821
 
     def convert_to_fp32(self):
         raise NotImplementedError()
@@ -608,9 +608,9 @@ class UNetModel(nn.Module):
         """
         Convert the torso of the model to float32.
         """
-        self.input_blocks.apply(convert_module_to_f32)
-        self.middle_block.apply(convert_module_to_f32)
-        self.output_blocks.apply(convert_module_to_f32)
+        self.input_blocks.apply(convert_module_to_f32)  # noqa: F821
+        self.middle_block.apply(convert_module_to_f32)  # noqa: F821
+        self.output_blocks.apply(convert_module_to_f32)  # noqa: F821
 
     def forward(self, x, timesteps=None, context=None, y=None):  # **_kwargs
         """
@@ -808,16 +808,16 @@ class EncoderUNetModel(nn.Module):
         """
         Convert the torso of the model to float16.
         """
-        self.input_blocks.apply(convert_module_to_f16)
-        self.middle_block.apply(convert_module_to_f16)
+        self.input_blocks.apply(convert_module_to_f16)  # noqa: F821
+        self.middle_block.apply(convert_module_to_f16)  # noqa: F821
 
     def convert_to_fp32(self):
         raise NotImplementedError()
         """
         Convert the torso of the model to float32.
         """
-        self.input_blocks.apply(convert_module_to_f32)
-        self.middle_block.apply(convert_module_to_f32)
+        self.input_blocks.apply(convert_module_to_f32)  # noqa: F821
+        self.middle_block.apply(convert_module_to_f32)  # noqa: F821
 
     def forward(self, x, timesteps):
         """

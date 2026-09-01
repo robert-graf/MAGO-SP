@@ -21,6 +21,7 @@ from torch.optim.lr_scheduler import LambdaLR
 from torchvision.utils import make_grid
 from tqdm import tqdm
 
+from networks.backbone.substructures.nd_layers import extract_into_tensor, noise_like
 from networks.models.autoencoders.autoencoder import AutoencoderKL, IdentityFirstStage, VQModelInterface
 from networks.models.diffusion.ddpm import DDPM
 from networks.models.diffusion.utils.ddim_sampler import DDIMSampler
@@ -62,7 +63,7 @@ class LatentDiffusion(DDPM):
             conditioning_key = None
         ckpt_path = kwargs.pop("ckpt_path", None)
         ignore_keys = kwargs.pop("ignore_keys", [])
-        super().__init__(conditioning_key=conditioning_key, *args, **kwargs)
+        super().__init__(conditioning_key=conditioning_key, *args, **kwargs)  # noqa: B026
         self.concat_mode = concat_mode
         self.cond_stage_trainable = cond_stage_trainable
         self.cond_stage_key = cond_stage_key
@@ -504,7 +505,7 @@ class LatentDiffusion(DDPM):
             # hybrid case, cond is expected to be a dict
             pass
         else:
-            assert False, cond
+            raise AssertionError(cond)  # noqa: TRY004
             if not isinstance(cond, list):
                 cond = [cond]
             key = "c_concat" if self.conditioning_key == "concat" else "c_crossattn"
@@ -1105,10 +1106,10 @@ class Layout2ImgDiffusion(LatentDiffusion):
     # TODO: move all layout-specific hacks to this class
     def __init__(self, cond_stage_key, *args, **kwargs):
         assert cond_stage_key == "coordinates_bbox", 'Layout2ImgDiffusion only for cond_stage_key="coordinates_bbox"'
-        super().__init__(cond_stage_key=cond_stage_key, *args, **kwargs)
+        super().__init__(cond_stage_key=cond_stage_key, *args, **kwargs)  # noqa: B026
 
     def log_images(self, batch, N=8, *args, **kwargs):
-        logs = super().log_images(batch=batch, N=N, *args, **kwargs)
+        logs = super().log_images(batch=batch, N=N, *args, **kwargs)  # noqa: B026
 
         key = "train" if self.training else "validation"
         dset = self.trainer.datamodule.datasets[key]  # type: ignore

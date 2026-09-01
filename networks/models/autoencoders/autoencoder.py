@@ -275,7 +275,7 @@ class VQModel(pl.LightningModule):
 
 class VQModelInterface(VQModel):
     def __init__(self, embed_dim, *args, **kwargs):
-        super().__init__(embed_dim=embed_dim, *args, **kwargs)
+        super().__init__(embed_dim=embed_dim, *args, **kwargs)  # noqa: B026
         self.embed_dim = embed_dim
 
     def encode(self, x):

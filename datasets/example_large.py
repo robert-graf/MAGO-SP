@@ -113,7 +113,7 @@ class ImageSR(Dataset):
         w, h = target.shape[-2], target.shape[-1]
         hp = max((self.size[0] - w) / 2, 0)
         vp = max((self.size[1] - h) / 2, 0)
-        padding = [int(floor(vp)), int(floor(hp)), int(ceil(vp)), int(ceil(hp))]
+        padding = [floor(vp), floor(hp), ceil(vp), ceil(hp)]
         if self.rotation:
             angle = random.uniform(-self.rotation, self.rotation)  # Random rotation within range
             target = tf.rotate(target, angle, tf.InterpolationMode.BILINEAR)

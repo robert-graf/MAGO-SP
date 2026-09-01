@@ -87,7 +87,7 @@ class BaseDataset(Dataset):
                 image = image.to(torch.float32) / 127.5 - 1.0
             return {default_key: image.to(torch.float32)}
 
-        assert False, f"Expected a not a {end} file; {path}"
+        raise AssertionError(f"Expected a not a {end} file; {path}")
 
     def data_argumentation_3D():
         raise NotImplementedError()
@@ -123,7 +123,7 @@ class BaseDataset(Dataset):
         w, h = target.shape[-2], target.shape[-1]
         hp = max((self.size[0] - w) / 2, 0)
         vp = max((self.size[1] - h) / 2, 0)
-        padding = [int(floor(vp)), int(floor(hp)), int(ceil(vp)), int(ceil(hp))]
+        padding = [floor(vp), floor(hp), ceil(vp), ceil(hp)]
         target = tf.pad(target, padding, padding_mode=self.padding)
         segmentation = tf.pad(segmentation, padding, padding_mode=self.padding) if segmentation is not None else None
 

@@ -26,8 +26,8 @@ if __name__ == "__main__":
             print(path, "does not exits")
             return None
 
-        for i in path.glob(f"sub-*_chunk-{i}_part-*_vibe.nii.gz"):
-            files[i.name.split("part-")[1].split("_")[0]] = BIDS_FILE(i, nako_dataset)
+        for j in path.glob(f"sub-*_chunk-{i}_part-*_vibe.nii.gz"):
+            files[j.name.split("part-")[1].split("_")[0]] = BIDS_FILE(j, nako_dataset)
         if len(files) == 0:
             return None
         if len(files) != 4:

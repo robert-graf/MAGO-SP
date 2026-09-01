@@ -40,9 +40,6 @@ def make_beta_schedule(schedule, n_timestep, linear_start=1e-4, linear_end=2e-2,
     return betas.numpy()
 
 
-from tqdm import tqdm
-
-
 def make_ddim_timesteps(ddim_discr_method, num_ddim_timesteps, num_ddpm_timesteps, verbose=True):
     if ddim_discr_method == "uniform":
         num_ddim_timesteps -= 2
@@ -64,7 +61,7 @@ def make_ddim_timesteps(ddim_discr_method, num_ddim_timesteps, num_ddpm_timestep
 def make_ddim_sampling_parameters(alphacums, ddim_timesteps, eta, verbose=True):
     # select alphas for computing the variance schedule
     alphas = alphacums[ddim_timesteps]
-    alphas_prev = np.asarray([alphacums[0]] + alphacums[ddim_timesteps[:-1]].tolist())
+    alphas_prev = np.asarray([alphacums[0], *alphacums[ddim_timesteps[:-1]].tolist()])
 
     # according the the formula provided in https://arxiv.org/abs/2010.02502
     sigmas = eta * np.sqrt((1 - alphas_prev) / (1 - alphas) * (1 - alphas / alphas_prev))
@@ -144,7 +141,7 @@ class CheckpointFunction(torch.autograd.Function):
         del ctx.input_tensors
         del ctx.input_params
         del output_tensors
-        return (None, None) + input_grads
+        return (None, None, *input_grads)
 
 
 def timestep_embedding(timesteps, dim, max_period=10000, repeat_only=False):
@@ -259,6 +256,6 @@ class HybridConditioner(nn.Module):
 
 
 def noise_like(shape, device, repeat=False):
-    repeat_noise = lambda: torch.randn((1, *shape[1:]), device=device).repeat(shape[0], *((1,) * (len(shape) - 1)))
-    noise = lambda: torch.randn(shape, device=device)
+    repeat_noise = lambda: torch.randn((1, *shape[1:]), device=device).repeat(shape[0], *((1,) * (len(shape) - 1)))  # noqa: E731
+    noise = lambda: torch.randn(shape, device=device)  # noqa: E731
     return repeat_noise() if repeat else noise()

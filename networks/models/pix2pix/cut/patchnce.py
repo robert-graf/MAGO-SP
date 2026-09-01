@@ -58,7 +58,7 @@ class PatchNCELoss(nn.Module):
 
 class Normalize(nn.Module):
     def __init__(self, power=2):
-        super(Normalize, self).__init__()
+        super().__init__()
         self.power = power
 
     def forward(self, x):
@@ -115,7 +115,7 @@ def init_weights(net, init_type="normal", init_gain=0.02, debug=False):
             elif init_type == "orthogonal":
                 init.orthogonal_(m.weight.data, gain=init_gain)  # type: ignore
             else:
-                raise NotImplementedError("initialization method [%s] is not implemented" % init_type)
+                raise NotImplementedError(f"initialization method [{init_type}] is not implemented")
             if hasattr(m, "bias") and m.bias is not None:
                 init.constant_(m.bias.data, 0.0)
         # BatchNorm Layer's weight is not a matrix; only normal distribution applies.
@@ -131,7 +131,7 @@ class PatchSampleF(nn.Module):
         # potential issues: currently, we use the same patch_ids for multiple images in the batch
         if gpu_ids is None:
             gpu_ids = []
-        super(PatchSampleF, self).__init__()
+        super().__init__()
         self.l2norm = Normalize(2)
         self.use_mlp = use_mlp
         self.nc = nc  # hard-coded
@@ -148,7 +148,7 @@ class PatchSampleF(nn.Module):
             # mlp.to(feat.device)
             # if len(self.gpu_ids) > 0:
             #    mlp.cuda()
-            setattr(self, "mlp_%d" % mlp_id, mlp)
+            setattr(self, "mlp_%d" % mlp_id, mlp)  # noqa: UP031
         init_net(self, self.init_type, self.init_gain, self.gpu_ids)
         self.mlp_init = True
 
@@ -175,7 +175,7 @@ class PatchSampleF(nn.Module):
                 x_sample = feat_reshape
                 patch_id = []
             if self.use_mlp:
-                mlp = getattr(self, "mlp_%d" % feat_id)
+                mlp = getattr(self, "mlp_%d" % feat_id)  # noqa: UP031
                 # print(x_sample.device,str(x_sample.device) == 'cpu')
                 if str(x_sample.device) == "cpu":
                     mlp.cpu()

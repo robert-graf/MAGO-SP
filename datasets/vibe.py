@@ -35,10 +35,10 @@ class VIBE_dataset(MEVIBE_dataset):
         zoom_min=0.8,
         zoom_max=1.2,
         padding="constant",
-        split_file=Path(os.environ.get("DATASET_NAKO", ""), "notes/nako_split.xlsx"),
-        black_list=Path(os.environ.get("DATASET_NAKO", ""), "notes/water_fat_inversion_vibe.xlsx"),
-        dataset_path=Path(os.environ.get("DATASET_NAKO", ""), "dataset-nako/training_data/vibe/"),
-        nako_dataset=Path(os.environ.get("DATASET_NAKO", ""), "dataset-nako"),
+        split_file=Path(os.environ.get("DATASET_NAKO", ""), "notes/nako_split.xlsx"),  # noqa: B008
+        black_list=Path(os.environ.get("DATASET_NAKO", ""), "notes/water_fat_inversion_vibe.xlsx"),  # noqa: B008
+        dataset_path=Path(os.environ.get("DATASET_NAKO", ""), "dataset-nako/training_data/vibe/"),  # noqa: B008
+        nako_dataset=Path(os.environ.get("DATASET_NAKO", ""), "dataset-nako"),  # noqa: B008
         create_dataset=False,
         num_slices=2,
     ):

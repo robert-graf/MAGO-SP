@@ -230,15 +230,15 @@ class Pix2Pix(pl.LightningModule):
         feat_q_pool, _ = self.patch_SampleF_MLP(feat_q, self.num_patches, sample_ids)
         ZERO = torch.zeros(1, device=self.device)
         total_nce_loss = ZERO
-        for f_q, f_k, crit, nce_layer in zip(feat_q_pool, feat_k_pool, self.criterion_NCE, self.nce_layers, strict=False):
+        for f_q, f_k, crit, _nce_layer in zip(feat_q_pool, feat_k_pool, self.criterion_NCE, self.nce_layers, strict=False):
             loss = crit(f_q, f_k) * self.lambda_NCE
             total_nce_loss += loss.mean()
 
         return total_nce_loss / n_layers
 
-    def forward_GAN_with_Intermediate(self, input, target_layers) -> list[Tensor]:
+    def forward_GAN_with_Intermediate(self, input, target_layers) -> list[Tensor]:  # noqa: A002
         raise NotImplementedError()
-        if isinstance(self.gan, Generator):  # self.opt.model_name == "resnet"
+        if isinstance(self.gan, Generator):  # self.opt.model_name == "resnet"  # noqa: F821
             if -1 in target_layers:
                 target_layers.append(len(self.gan.model))
             assert len(target_layers)
@@ -255,7 +255,7 @@ class Pix2Pix(pl.LightningModule):
         _, features = self.gan(input, return_intermediate=True, layers=target_layers)
         return features
 
-    def validation_step(self, batch, batch_idx):
+    def validation_step(self, batch, batch_idx):  # noqa: ARG002
         real_A = batch["condition"]
         real_B = batch["target"]
         print(real_B.shape, real_A.shape)

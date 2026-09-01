@@ -44,7 +44,7 @@ for name, bl in [
     combined_df = combined_df.merge(epi, on="Subject_Name", how="left")
 
     # Mark errors based on blacklist
-    combined_df["has_error"] = combined_df["Subject_Name"].apply(lambda x: 1 if x in black_list else 0)
+    combined_df["has_error"] = combined_df["Subject_Name"].apply(lambda x: 1 if x in black_list else 0)  # noqa: B023
 
     # Assign "unknown" to missing group values (e.g., BMI_Class, PatientSex)
     combined_df["BMI_Class"] = combined_df["BMI_Class"].cat.add_categories("unknown").fillna("unknown")

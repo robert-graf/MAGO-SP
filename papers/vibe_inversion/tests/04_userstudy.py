@@ -32,5 +32,3 @@ print(c_mevibe.subjects[:102])
 random.seed(42)
 random.shuffle(c_vibe.subjects)
 print(c_vibe.subjects[:100])
-
-exit()

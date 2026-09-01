@@ -28,7 +28,7 @@ for name, bl, percent in [
     # Add BMI and BMI classification
 
     def fun(x):
-        return 1 if x in black_list else 0
+        return 1 if x in black_list else 0  # noqa: B023
 
     # Add `has_error` column
     epi["has_error"] = epi["Subject_Name"].apply(fun)

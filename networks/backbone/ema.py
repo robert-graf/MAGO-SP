@@ -34,7 +34,7 @@ class LitEma(nn.Module):
             m_param = dict(model.named_parameters())
             shadow_params = dict(self.named_buffers())
 
-            for key in m_param:
+            for key in m_param:  # noqa: PLC0206
                 if m_param[key].requires_grad:
                     sname = self.m_name2s_name[key]
                     shadow_params[sname] = shadow_params[sname].type_as(m_param[key])
@@ -45,7 +45,7 @@ class LitEma(nn.Module):
     def copy_to(self, model):
         m_param = dict(model.named_parameters())
         shadow_params = dict(self.named_buffers())
-        for key in m_param:
+        for key in m_param:  # noqa: PLC0206
             if m_param[key].requires_grad:
                 m_param[key].data.copy_(shadow_params[self.m_name2s_name[key]].data)
             else:

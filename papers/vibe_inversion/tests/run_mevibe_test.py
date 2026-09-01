@@ -245,7 +245,7 @@ if __name__ == "__main__":
     needs_manuel_intervention = 0
     needs_correction = 0
 
-    for e, sub in enumerate(subs):
+    for sub in subs:
         batch_niis = get_mevibe_dict(sub)
         if batch_niis is None:
             continue
@@ -257,7 +257,7 @@ if __name__ == "__main__":
         #    exit()
         # continue
 
-        for sequ, batch_nii in batch_niis.items():
+        for batch_nii in batch_niis.values():
             if batch_nii is None:
                 continue
             try:

@@ -19,7 +19,7 @@ from papers.vibe_inversion.recon_mevibe import RicianLogLik, alpha_p, freqs_ppm,
 ## With a signal prior we get 10-50 optimal rician noise.
 
 
-def loss_function(params, s_magnitude, ti, alpha_p, freqs_hz, rician_loss=True):
+def loss_function(params, s_magnitude, ti, alpha_p, freqs_hz, rician_loss=True):  # noqa: ARG001
     p_w, p_f, R2_star, sigma = params
     model_signal = signal_model_magnitude(ti, p_w, p_f, R2_star, alpha_p, freqs_hz)
     return -RicianLogLik(s_magnitude, model_signal, sigma=sigma)
@@ -83,7 +83,7 @@ def optimize_voxel_magnitude(
     return p_w, p_f, r2s, sigma
 
 
-def _process_voxel(idx, s_magnitude, ti, alpha_p, freqs_hz, rician_loss=True, sigma=2):
+def _process_voxel(idx, s_magnitude, ti, alpha_p, freqs_hz, rician_loss=True, sigma=2):  # noqa: ARG001
     if s_magnitude.sum() <= 20:
         return -1
     if np.prod(s_magnitude) < 0:
@@ -198,7 +198,7 @@ def estimate_rician_sigma_from_guess(
 
     out_l = []
     # Assign results back to output arrays
-    for p_w, p_f, r2s, sigma, idx in results:
+    for p_w, p_f, r2s, sigma, idx in results:  # type: ignore  # noqa: B007, PLR1704
         if sigma > 0:
             out_l.append(sigma)
 
