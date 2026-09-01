@@ -85,8 +85,25 @@ def _fit_batch(
     n_iter: int,
     lr: float,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """One batched Adam fit. Returns (fitted theta, per-voxel final loss)."""
+    """One batched Adam fit. Returns (fitted theta, per-voxel final loss).
+
+    NaN-hardening applied throughout so downstream stitching / PDFF math
+    doesn't receive garbage:
+      - Non-finite input magnitudes (rare, but happen for reconstructed
+        priors) are zeroed once.
+      - No hard upper clamp on p_w/p_f during optimisation — scanner
+        magnitudes routinely exceed 1000, so the previous per-step
+        clamp([0, 1000]) collapsed real signal to a flat 1000 and made
+        Adam diverge into NaN. We only enforce non-negativity per step.
+      - Non-finite gradients are zeroed so a single blown-up voxel
+        doesn't poison neighbouring parameters via Adam's moment buffers.
+      - Voxels that still ended non-finite are reverted to their init.
+      - Per-voxel final loss uses ``inf`` for reverted voxels so the
+        two-guess selector in the caller picks the other branch.
+    """
+    theta_init = torch.nan_to_num(theta_init, nan=0.0, posinf=0.0, neginf=0.0)
     theta = theta_init.clone().detach().requires_grad_(True)
+    s_target = torch.nan_to_num(s_target, nan=0.0, posinf=0.0, neginf=0.0)
     opt = torch.optim.Adam([theta], lr=lr)
     ti_row = ti.unsqueeze(0)
     fr_row = f_re.unsqueeze(0)
@@ -98,13 +115,30 @@ def _fit_batch(
             loss = _rician_neg_loglik_torch(s_target, pred, sigma).sum()
         else:
             loss = ((pred - s_target) ** 2).sum()
+        if not torch.isfinite(loss):
+            # Loss blew up — leave theta at its last finite state, bail.
+            break
         loss.backward()
+        if theta.grad is not None:
+            theta.grad = torch.nan_to_num(theta.grad, nan=0.0, posinf=0.0, neginf=0.0)
         opt.step()
         with torch.no_grad():
-            theta.clamp_(min=0.0, max=1000.0)
+            # Only non-negativity is a hard physical constraint. NO upper
+            # cap — scanner magnitudes are commonly in the thousands.
+            theta.clamp_(min=0.0)
+            # Belt-and-braces: kill any NaN that snuck through moment buffers.
+            theta.copy_(torch.nan_to_num(theta, nan=0.0, posinf=0.0, neginf=0.0))
     with torch.no_grad():
+        bad = ~torch.isfinite(theta).all(dim=-1, keepdim=True)
+        if bad.any():
+            theta = torch.where(bad.expand_as(theta), theta_init, theta)
         pred = _predict(theta, ti_row, fr_row, fi_row)
         loss_per_voxel = ((pred - s_target) ** 2).sum(dim=-1)
+        loss_per_voxel = torch.where(
+            torch.isfinite(loss_per_voxel),
+            loss_per_voxel,
+            torch.full_like(loss_per_voxel, float("inf")),
+        )
     return theta.detach(), loss_per_voxel
 
 
@@ -162,9 +196,9 @@ def multipeak_fat_model_from_guess_torch(
     r0 = torch.full((n_vox,), 100.0, dtype=torch.float32, device=dev)
     theta_init = torch.stack([w0, f0, r0], dim=-1).contiguous()
     theta, _ = _fit_batch(s_tensor, ti, f_re, f_im, theta_init, rician_loss, sigma, n_iter, lr)
-    w = theta[:, 0].cpu().numpy()
-    f = theta[:, 1].cpu().numpy()
-    r = theta[:, 2].cpu().numpy()
+    w = np.nan_to_num(theta[:, 0].cpu().numpy(), nan=0.0, posinf=0.0, neginf=0.0)
+    f = np.nan_to_num(theta[:, 1].cpu().numpy(), nan=0.0, posinf=0.0, neginf=0.0)
+    r = np.nan_to_num(theta[:, 2].cpu().numpy(), nan=0.0, posinf=0.0, neginf=0.0)
     out_w = np.clip(w, 0, None).reshape(shape)
     out_f = np.clip(f, 0, None).reshape(shape)
     out_r = np.clip(r * 10.0, 0, None).reshape(shape).astype(np.int16)
@@ -203,20 +237,23 @@ def multipeak_fat_model_smooth_torch(
     theta_b = torch.tensor([[1000.0, 0.0, r2_init]], dtype=torch.float32, device=dev).expand(n_vox, 3).contiguous()
     theta_a, l_a = _fit_batch(s_tensor, ti, f_re, f_im, theta_a, rician_loss, sigma_rician, n_iter, lr)
     theta_b, l_b = _fit_batch(s_tensor, ti, f_re, f_im, theta_b, rician_loss, sigma_rician, n_iter, lr)
-    w_a = theta_a[:, 0].cpu().numpy()
-    f_a = theta_a[:, 1].cpu().numpy()
-    r_a = theta_a[:, 2].cpu().numpy()
-    w_b = theta_b[:, 0].cpu().numpy()
-    f_b = theta_b[:, 1].cpu().numpy()
-    r_b = theta_b[:, 2].cpu().numpy()
-    l1 = l_a.cpu().numpy().reshape(shape)
-    l2 = l_b.cpu().numpy().reshape(shape)
+    w_a = np.nan_to_num(theta_a[:, 0].cpu().numpy(), nan=0.0, posinf=0.0, neginf=0.0)
+    f_a = np.nan_to_num(theta_a[:, 1].cpu().numpy(), nan=0.0, posinf=0.0, neginf=0.0)
+    r_a = np.nan_to_num(theta_a[:, 2].cpu().numpy(), nan=0.0, posinf=0.0, neginf=0.0)
+    w_b = np.nan_to_num(theta_b[:, 0].cpu().numpy(), nan=0.0, posinf=0.0, neginf=0.0)
+    f_b = np.nan_to_num(theta_b[:, 1].cpu().numpy(), nan=0.0, posinf=0.0, neginf=0.0)
+    r_b = np.nan_to_num(theta_b[:, 2].cpu().numpy(), nan=0.0, posinf=0.0, neginf=0.0)
+    # Losses may be `inf` for voxels the fit gave up on; keep them finite for
+    # the smoothing / max comparison downstream.
+    max_finite = float(np.finfo(np.float32).max)
+    l1 = np.nan_to_num(l_a.cpu().numpy().reshape(shape), nan=max_finite, posinf=max_finite, neginf=max_finite)
+    l2 = np.nan_to_num(l_b.cpu().numpy().reshape(shape), nan=max_finite, posinf=max_finite, neginf=max_finite)
     if smooth:
         l1 = smooth_gaussian(l1, sigma=sigma_smooth, truncate=3) * factor
         l2 = smooth_gaussian(l2, sigma=sigma_smooth, truncate=3)
     msk = (l2 > l1).astype(np.float32)
-    out_w = (w_a.reshape(shape) * msk + w_b.reshape(shape) * (1 - msk))
-    out_f = (f_a.reshape(shape) * msk + f_b.reshape(shape) * (1 - msk))
+    out_w = w_a.reshape(shape) * msk + w_b.reshape(shape) * (1 - msk)
+    out_f = f_a.reshape(shape) * msk + f_b.reshape(shape) * (1 - msk)
     out_r = (r_a.reshape(shape) * msk + r_b.reshape(shape) * (1 - msk)).astype(np.int16)
     out_l = l1 * msk + l2 * (1 - msk)
     low = _low_signal_mask(s_magnitude_arr)

@@ -233,6 +233,19 @@ Same layer also exposes `use_rician=True|False`. `True` (default) fits with a Ri
 
 `pipeline` and `pipeline_bids` both take `ti_ms: list[float] | None`. The values are echo times in **milliseconds** — converted to seconds by `pipeline` before being handed to `recon_fat_water_model`, because the signal model computes `exp(1j·2π·f_Hz·t)` and needs `t` in seconds. Order must match `s_magnitude`. `None` uses the built-in default (`recon_mevibe.ti_ms_default`, six echoes at 1.23–7.38 ms).
 
+### Suppress structures from the swap analysis (`ignore_vibe_labels`)
+
+The 3-channel swap detector (nnU-Net 282) can produce false positives in air-filled or fluid-only regions (lungs, trachea, spinal channel) where the water/fat contrast is degenerate. Pass a VIBESeg label id (or a list) to zero those voxels out **before** the swap counts (`count_water`, `count_fat`, `count_disagree`) and **before** the `affected_structures` report:
+
+```python
+pipeline_bids(
+    ...,
+    ignore_vibe_labels=[10, 11, 12, 13, 14, 16, 71],  # lungs, trachea, spinal channel
+)
+```
+
+Works on both `pipeline` and `pipeline_bids`; only takes effect when a `total_vibe` segmentation is available (via `derivative_total` in `pipeline_bids`, or explicitly in `pipeline`). Label ids are from `TPTBox.segmentation.VibeSeg.vibeseg.VibeSeg_map` (1=spleen, 5=liver, 10-14=lung lobes, 16=trachea, 52=spinal_cord, 71=spinal_channel, 65=subcutaneous_fat, 66=muscle, 67=inner_fat, …). Accepts a single int or any `Sequence[int]`. Affects the reconstruction gate too — voxels ignored here don't push `needs_correction` past `threshold_swapped_voxels` / `threshold_disagree_voxels`.
+
 ### GPU acceleration (`use_gpu`)
 
 The per-voxel `scipy.optimize.least_squares` fit is now optionally routed through a batched PyTorch implementation in `papers/vibe_inversion/recon_mevibe_gpu.py`. Set `use_gpu=True` on `pipeline` or `pipeline_bids` to enable it:

@@ -133,9 +133,10 @@ def optimize_voxel_magnitude(s_magnitude: np.ndarray, ti: np.ndarray, r2, initia
     -----
     The function minimizes the loss function to estimate the water and fat proton densities and \\( R_2^* \\).
     """
-    s_magnitude = s_magnitude.astype(np.float32)
+    s_magnitude = np.nan_to_num(s_magnitude.astype(np.float32), nan=0.0, posinf=0.0, neginf=0.0)
     guess = [*initial_guess, r2]
     p_w = 100000
+    r2s = r2
 
     # try:
     if len(s_magnitude) >= 3:
@@ -154,8 +155,13 @@ def optimize_voxel_magnitude(s_magnitude: np.ndarray, ti: np.ndarray, r2, initia
         p_w, p_f, r2s = res.x
         if p_w >= 1000 or p_f >= 1000:
             return 0, 0, 0
-    p_w = max(p_w, 0)
-    p_f = max(p_f, 0)
+    # NaN-hardening: `least_squares` occasionally returns NaN when the Jacobian
+    # collapses on degenerate voxels; those must never propagate downstream
+    # into the stitching/PDFF math (otherwise the ramp stitcher kicks the
+    # whole chunk out, see TPTBox stitching.main).
+    p_w = 0.0 if not np.isfinite(p_w) else max(p_w, 0)
+    p_f = 0.0 if not np.isfinite(p_f) else max(p_f, 0)
+    r2s = 0.0 if not np.isfinite(r2s) else r2s
     return p_w, p_f, r2s
 
 

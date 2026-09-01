@@ -100,6 +100,7 @@ def make_swap_statistic_single(
     total_vibe: Image_Reference | None = None,
     roi: Path | BIDS_FILE | None = None,
     roi_exclude=(10, 9),
+    ignore_vibe_labels: Sequence[int] | int | None = None,
 ) -> Swap_statistic:
     """
     Identifies water-fat inversions in the segmentation, optionally using total VIBE segmentation.
@@ -114,6 +115,14 @@ def make_swap_statistic_single(
         seg2_fat (Path): Path to the fat segmentation file.
         total_vibe (Path | str | None): Optional path to the total VIBE segmentation file.
                                         If None, affected structures will not be analyzed.
+        roi: Optional coarse ROI segmentation; regions matching `roi_exclude` (or with
+            label 0) are zeroed out before counting.
+        roi_exclude: Labels in `roi` to treat as "not of interest".
+        ignore_vibe_labels: Optional VIBESeg label id (or sequence of ids) whose voxels
+            are excluded from the swap counts AND from `affected_structures`. Requires
+            `total_vibe` to be set — the labels are looked up in that segmentation. Use
+            this to suppress known false-positive regions (e.g. lung / trachea, where
+            the water/fat detector is unreliable). See ``VibeSeg_map`` for the label ids.
 
     Returns:
         Swap_statistic: An object containing inversion counts and affected structures if applicable.
@@ -140,6 +149,20 @@ def make_swap_statistic_single(
     nii_fat[nii_water == 0] = 0  # Background remains as 0
     nii_water[nii_fat != nii_water] = 3  # Disagreement mask
     nii_water[nii_fat == 0] = 0  # Background remains as 0
+
+    # Suppress detections that fall inside user-listed VIBESeg structures.
+    # Runs BEFORE the affected-structures analysis so those labels never appear
+    # in the report AND their voxels never count toward count_water/fat/disagree.
+    ignore_labels_list: list[int] = []
+    if ignore_vibe_labels is not None:
+        ignore_labels_list = [int(ignore_vibe_labels)] if isinstance(ignore_vibe_labels, int) else [int(x) for x in ignore_vibe_labels]
+    if ignore_labels_list and total_vibe:
+        ignore_vibe_nii: NII = to_nii(total_vibe, seg=True)
+        if nii_water.shape != ignore_vibe_nii.shape:
+            ignore_vibe_nii.resample_from_to_(nii_water)
+        ignore_mask = ignore_vibe_nii.extract_label(ignore_labels_list) == 1
+        nii_water[ignore_mask] = 0
+        nii_fat[ignore_mask] = 0
 
     # Analyze affected structures if `total_vibe` is provided
     affected_structures = None
@@ -187,6 +210,14 @@ def make_pdff_pdwf(water_image: Image_Reference, fat_image: Image_Reference, pdf
     water = to_nii(water_image)
     water.set_dtype_()
     fat.set_dtype_()
+    # NaN-harden the inputs: `fat / (water + fat)` propagates NaN, and the
+    # `sum == 0` guard below doesn't catch NaN (nan == 0 is False), so a
+    # single NaN voxel in either input contaminates the PDFF map. Replace
+    # non-finite voxels with 0 up-front so the guard behaves correctly.
+    _fat_arr = np.nan_to_num(fat.get_array().astype(np.float32), nan=0.0, posinf=0.0, neginf=0.0)
+    _water_arr = np.nan_to_num(water.get_array().astype(np.float32), nan=0.0, posinf=0.0, neginf=0.0)
+    fat = fat.set_array(_fat_arr)
+    water = water.set_array(_water_arr)
     nii_pdff = fat / (water + fat)
     nii_pdff[water + fat == 0] = 0
     nii_pdff *= 1000
@@ -415,6 +446,7 @@ def pipeline(
     vibe_from_signal=True,
     roi: str | Path | None = None,
     roi_exclude=(9, 10),
+    ignore_vibe_labels: Sequence[int] | int | None = None,
     resample=False,
     stop_after_signal_prior=True,
     MagneticFieldStrength=3.0,
@@ -516,6 +548,7 @@ def pipeline(
             total_vibe,
             roi=roi,
             roi_exclude=roi_exclude,
+            ignore_vibe_labels=ignore_vibe_labels,
         )
         # count_fat is the amount of swapped pixels
         # count_disagree is the amount of pixels, where the detection disagrees
@@ -566,6 +599,7 @@ def pipeline(
             total_vibe,
             roi=roi,
             roi_exclude=roi_exclude,
+            ignore_vibe_labels=ignore_vibe_labels,
         )
         needs_manuel_intervention = swap_static_rec.count_fat >= threshold_swapped_voxels or swap_static_rec.count_disagree >= threshold_disagree_voxels
         return Result(
@@ -606,6 +640,7 @@ def pipeline(
             vibe_from_signal=vibe_from_signal,
             roi=roi,
             roi_exclude=roi_exclude,
+            ignore_vibe_labels=ignore_vibe_labels,
             resample=True,
         )
 
@@ -636,6 +671,7 @@ def pipeline_bids(
     gpu_device: str = "cuda",
     gpu_iters: int = 100,
     gpu_lr: float = 0.5,
+    ignore_vibe_labels: Sequence[int] | int | None = None,
 ) -> Result:
     args = {
         "file_type": "nii.gz",
@@ -816,6 +852,7 @@ def pipeline_bids(
         evaluate_reconstructed=evaluate_reconstructed,
         vibe_from_signal=vibe_from_signal,
         roi=roi,
+        ignore_vibe_labels=ignore_vibe_labels,
         stop_after_signal_prior=stop_after_signal_prior,
         MagneticFieldStrength=MagneticFieldStrength,
         alpha_p=alpha_p,
