@@ -27,7 +27,7 @@ class ImageSR(Dataset):
         random_zoom=False,
         zoom_min=0.8,
         zoom_max=1.2,
-        padding="constant"
+        padding="constant",
     ):
         """
         Super-resolution Dataloader
@@ -44,7 +44,7 @@ class ImageSR(Dataset):
         :param data_root:
         :param random_crop:
         """
-        
+
         self.size = (size, size)
         dataset_path = "/media/data/robert/datasets/multimodal_large/"
         if os.path.exists("/DATA/NAS/datasets_processed/Natural/multimodal_large/"):
@@ -162,9 +162,7 @@ class ImageSR(Dataset):
         img = self.data_argumentation(img)
         img = img.permute((1, 2, 0)).to(torch.float32).clone().numpy()
 
-        example: dict = {
-            "image": img
-        }
+        example: dict = {"image": img}
         # example["LR_image"] = (lr_image / 127.5 - 1.0).to(torch.float32).permute((1, 2, 0))  # type: ignore
         if self.class_labels:
             example["class_label"] = idx

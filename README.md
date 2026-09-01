@@ -61,7 +61,15 @@ water_image = "Path to water image (not the PDWF)"
 fat_image = "Path to fat image (not the PDFF)"
 # Compute detection
 water_detection, fat_detection = detect_inversion_seg(
-    out_phase, in_phase, water_image, fat_image, out_detection_water="water_msk.nii.gz", out_detection_fat="fat_msk.nii.gz", override=False, ddevice="cuda", gpu=0
+    out_phase,
+    in_phase,
+    water_image,
+    fat_image,
+    out_detection_water="water_msk.nii.gz",
+    out_detection_fat="fat_msk.nii.gz",
+    override=False,
+    ddevice="cuda",
+    gpu=0,
 )
 swap_static = make_swap_statistic_single(name, water_detection, fat_detection, total_vibe=None)
 
@@ -198,7 +206,7 @@ pipeline_bids(
     MagneticFieldStrength=3.0,  # Tesla (used to convert ppm → Hz)
     freqs_ppm=numpy.array([...]),  # chemical shifts of each peak
     alpha_p=numpy.array([...]),  # relative amplitudes, same length as freqs_ppm
-    use_gpu=True,                 # opt-in PyTorch batched fit — see "GPU acceleration" below
+    use_gpu=True,  # opt-in PyTorch batched fit — see "GPU acceleration" below
 )
 ```
 
@@ -253,10 +261,10 @@ The per-voxel `scipy.optimize.least_squares` fit is now optionally routed throug
 ```python
 pipeline_bids(
     ...,
-    use_gpu=True,          # off by default
-    gpu_device="cuda",     # or "cuda:1", "cpu", "mps"
-    gpu_iters=100,         # Adam iterations
-    gpu_lr=0.5,            # Adam learning rate
+    use_gpu=True,  # off by default
+    gpu_device="cuda",  # or "cuda:1", "cpu", "mps"
+    gpu_iters=100,  # Adam iterations
+    gpu_lr=0.5,  # Adam learning rate
 )
 ```
 
@@ -277,7 +285,7 @@ The GPU fit is also usable without the pipeline. Import it directly:
 ```python
 from papers.vibe_inversion.recon_mevibe_gpu import (
     multipeak_fat_model_from_guess_torch,  # refinement fit from a water/fat prior
-    multipeak_fat_model_smooth_torch,       # two-guess fit + loss-smoothed selection
+    multipeak_fat_model_smooth_torch,  # two-guess fit + loss-smoothed selection
 )
 ```
 

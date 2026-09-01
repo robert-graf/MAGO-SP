@@ -111,7 +111,9 @@ def RicianLogLik(s_magnitude, model_signal, sigma):
     return np.log(s_magnitude) - np.log(sigmaSquared) - sumsqsc + lb0
 
 
-def optimize_voxel_magnitude(s_magnitude: np.ndarray, ti: np.ndarray, r2, initial_guess: tuple[float, float], alpha_p, freqs_hz, rician_loss=True, sigma=2):
+def optimize_voxel_magnitude(
+    s_magnitude: np.ndarray, ti: np.ndarray, r2, initial_guess: tuple[float, float], alpha_p, freqs_hz, rician_loss=True, sigma=2
+):
     """
     Optimize p_w, p_f, and R2* for a given voxel using least squares minimization.
 
@@ -148,7 +150,13 @@ def optimize_voxel_magnitude(s_magnitude: np.ndarray, ti: np.ndarray, r2, initia
     if p_w > 1000 or p_f > 1000:
         guess = [max(min(g, 1000.0), 0.0) for g in guess]
         # try:
-        res = least_squares(loss_function, guess, args=(s_magnitude, ti, alpha_p, freqs_hz, rician_loss, sigma), bounds=((0, 0, 0), (1000, 1000, 1000)), method="dogbox")
+        res = least_squares(
+            loss_function,
+            guess,
+            args=(s_magnitude, ti, alpha_p, freqs_hz, rician_loss, sigma),
+            bounds=((0, 0, 0), (1000, 1000, 1000)),
+            method="dogbox",
+        )
         # except ValueError:
         #    print(f"({guess=}, {s_magnitude=}, {ti=}, {r2=}, {freqs_hz=})")
         #    return 0, 0, 0
@@ -175,7 +183,9 @@ def _process_voxel(idx, s_magnitude, ti, alpha_p, freqs_hz, rician_loss=True, si
 
     # Try second initial guess
     initial_guess2 = (1000.0, 0.0)
-    p_w2, p_f2, r2s2 = optimize_voxel_magnitude(s_magnitude, ti, 100, initial_guess2, alpha_p, freqs_hz, rician_loss=rician_loss, sigma=sigma)
+    p_w2, p_f2, r2s2 = optimize_voxel_magnitude(
+        s_magnitude, ti, 100, initial_guess2, alpha_p, freqs_hz, rician_loss=rician_loss, sigma=sigma
+    )
     loss2 = rss(p_w2, p_f2, s_magnitude, ti, r2s2, alpha_p, freqs_hz)
     return abs(p_w), abs(p_f), abs(p_w2), abs(p_f2), loss, loss2, r2s, r2s2, idx
 
@@ -242,7 +252,8 @@ def multipeak_fat_model_smooth(
     freqs_hz = get_freqs_hz(freqs_ppm, MagneticFieldStrength)
     with tqdm_joblib(tqdm(desc="Processing voxels", total=np.prod(shape))):
         results = Parallel(n_jobs=os.cpu_count())(
-            delayed(_process_voxel)(idx, np.array([i[idx] for i in s_magnitude_arr]), ti, alpha_p, freqs_hz, rician_loss, sigma_rician) for idx in np.ndindex(shape)
+            delayed(_process_voxel)(idx, np.array([i[idx] for i in s_magnitude_arr]), ti, alpha_p, freqs_hz, rician_loss, sigma_rician)
+            for idx in np.ndindex(shape)
         )
     r1 = r1.astype(np.int16)
     r2 = r2.astype(np.int16)
@@ -299,7 +310,16 @@ def multipeak_fat_model_from_guess(
     with tqdm_joblib(tqdm(desc="Processing voxels", total=np.prod(shape))):
         results = Parallel(n_jobs=max(os.cpu_count() - 1, 1))(
             delayed(_refine_prediction)(
-                idx, np.array([i[idx] for i in s_magnitude_arr]), water_guess[idx], fat_guess[idx], r2s_arr[idx], ti, alpha_p, freqs_hz, rician_loss, sigma
+                idx,
+                np.array([i[idx] for i in s_magnitude_arr]),
+                water_guess[idx],
+                fat_guess[idx],
+                r2s_arr[idx],
+                ti,
+                alpha_p,
+                freqs_hz,
+                rician_loss,
+                sigma,
             )
             for idx in np.ndindex(shape)
         )

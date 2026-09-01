@@ -106,13 +106,19 @@ class Pix2Pix(pl.LightningModule):
         return self.gan(x)
 
     def configure_optimizers(self) -> tuple[list[torch.optim.Adam], list[torch.optim.lr_scheduler.LambdaLR]]:
-        para = itertools.chain(self.gan.parameters(), self.patch_SampleF_MLP.parameters()) if self.use_contrastive else self.gan.parameters()
+        para = (
+            itertools.chain(self.gan.parameters(), self.patch_SampleF_MLP.parameters()) if self.use_contrastive else self.gan.parameters()
+        )
         optimizer_G = torch.optim.Adam(para, lr=self.lr, betas=(0.5, 0.999))
         optimizer_D = torch.optim.Adam(self.discriminator.parameters(), lr=self.lr, betas=(0.5, 0.999))
         if self.decay_epoch == -1:
             self.decay_epoch = self.max_epochs // 2
-        lr_scheduler_G = torch.optim.lr_scheduler.LambdaLR(optimizer_G, lr_lambda=LambdaLR(self.max_epochs, self.start_epoch, self.decay_epoch).step)
-        lr_scheduler_D = torch.optim.lr_scheduler.LambdaLR(optimizer_D, lr_lambda=LambdaLR(self.max_epochs, self.start_epoch, self.decay_epoch).step)
+        lr_scheduler_G = torch.optim.lr_scheduler.LambdaLR(
+            optimizer_G, lr_lambda=LambdaLR(self.max_epochs, self.start_epoch, self.decay_epoch).step
+        )
+        lr_scheduler_D = torch.optim.lr_scheduler.LambdaLR(
+            optimizer_D, lr_lambda=LambdaLR(self.max_epochs, self.start_epoch, self.decay_epoch).step
+        )
 
         return [optimizer_G, optimizer_D], [lr_scheduler_G, lr_scheduler_D]
 
@@ -125,9 +131,9 @@ class Pix2Pix(pl.LightningModule):
         real_B = train_batch["target"]
 
         assert real_A is not None
-        assert (
-            real_B.shape[1] == self.output_channels
-        ), f"real_a and output_channels are unequal. This feature is not supported every were. Shape:{real_A.shape}, output_channels = {self.output_channels}"
+        assert real_B.shape[1] == self.output_channels, (
+            f"real_a and output_channels are unequal. This feature is not supported every were. Shape:{real_A.shape}, output_channels = {self.output_channels}"
+        )
         #### In case of multiple optimizer fork ###
         # Compute forward and loss. Log loss. return one loss value.
         opt_g.zero_grad()
@@ -196,7 +202,9 @@ class Pix2Pix(pl.LightningModule):
 
         assert not np.any(
             np.isnan(pred_fake.detach().cpu().numpy())  # type: ignore
-        ), "NAN detected! (ʘᗩʘ'), if this happened at the start of your training, than the init is instable. Try again, or change init_type and try again."
+        ), (
+            "NAN detected! (ʘᗩʘ'), if this happened at the start of your training, than the init is instable. Try again, or change init_type and try again."
+        )
         fake_label = torch.zeros((pred_fake.shape[0], 1), device=self.device)
         loss_D_fake = self.criterion_GAN(pred_fake, fake_label).mean()  # is mean really necessary?
 
@@ -251,14 +259,16 @@ class Pix2Pix(pl.LightningModule):
         real_A = batch["condition"]
         real_B = batch["target"]
         print(real_B.shape, real_A.shape)
-        assert (
-            real_B.shape[1] == self.output_channels
-        ), f"real_a and output_channels are unequal. This feature is not supported every were. Shape:{real_A.shape}, output_channels = {self.output_channels}"
+        assert real_B.shape[1] == self.output_channels, (
+            f"real_a and output_channels are unequal. This feature is not supported every were. Shape:{real_A.shape}, output_channels = {self.output_channels}"
+        )
         fake_B = self.gan(real_A)
         assert real_A is not None
         # fake_id = self.gan(real_B)
         out = (
-            [real_B[:, [i]] for i in range(real_B.shape[1])] + [fake_B[:, [i]] for i in range(fake_B.shape[1])] + [real_A[:, [i]] for i in range(real_A.shape[1])]
+            [real_B[:, [i]] for i in range(real_B.shape[1])]
+            + [fake_B[:, [i]] for i in range(fake_B.shape[1])]
+            + [real_A[:, [i]] for i in range(real_A.shape[1])]
         )  # , fake_id, real_B
         out = [denormalize(i) for i in out]
 

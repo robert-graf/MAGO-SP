@@ -21,7 +21,10 @@ class DDIMSampler:
 
     def make_schedule(self, ddim_num_steps, ddim_discretize="uniform", ddim_eta=0.0, verbose=True):
         self.ddim_timesteps = make_ddim_timesteps(
-            ddim_discr_method=ddim_discretize, num_ddim_timesteps=ddim_num_steps, num_ddpm_timesteps=self.ddpm_num_timesteps, verbose=verbose
+            ddim_discr_method=ddim_discretize,
+            num_ddim_timesteps=ddim_num_steps,
+            num_ddpm_timesteps=self.ddpm_num_timesteps,
+            verbose=verbose,
         )
         alphas_cumprod = self.model.alphas_cumprod
         assert alphas_cumprod.shape[0] == self.ddpm_num_timesteps, "alphas have to be defined for each timestep"
@@ -214,7 +217,9 @@ class DDIMSampler:
             e_t = self.model.forward_model(x, t, condition)
         else:
             e_t = self.model.forward_model(x, t, condition)
-            e_t_uncond = self.model.forward_model(x, t, condition, factor=0)  # TODO may change this so both forwards are called at the same time
+            e_t_uncond = self.model.forward_model(
+                x, t, condition, factor=0
+            )  # TODO may change this so both forwards are called at the same time
             e_t = e_t_uncond + unconditional_guidance_scale * (e_t - e_t_uncond)
 
         if score_corrector is not None:

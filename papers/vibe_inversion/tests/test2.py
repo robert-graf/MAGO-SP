@@ -179,7 +179,15 @@ def pipeline_bids(
         log.on_save("rename", old_name, "->", out_detection_fat)
         old_name.rename(out_detection_fat)
     args["info"]["mod"] = None
-    return (total_vibe, out_reconstruction_water, out_reconstruction_fat, out_reconstruction_r2s, out_reconstruction_pdwf, out_reconstruction_pdff, out_signal_prior)
+    return (
+        total_vibe,
+        out_reconstruction_water,
+        out_reconstruction_fat,
+        out_reconstruction_r2s,
+        out_reconstruction_pdwf,
+        out_reconstruction_pdff,
+        out_signal_prior,
+    )
 
 
 def is_low_signal(water_array: np.ndarray, mask: np.ndarray, threshold=LOW_SIGNAL_WATER_MEAN) -> bool:
@@ -280,7 +288,9 @@ def evaluate(subs, recons):
                     water_arr[l != 0] = 0
                     fat_arr[l != 0] = 0
                     # iterate organs
-                    for idx in Full_Body_Instance_Vibe:  # [Full_Body_Instance_Vibe.liver, Full_Body_Instance_Vibe.subcutaneous_fat]:  # Full_Body_Instance_Vibe TODO
+                    for idx in (
+                        Full_Body_Instance_Vibe
+                    ):  # [Full_Body_Instance_Vibe.liver, Full_Body_Instance_Vibe.subcutaneous_fat]:  # Full_Body_Instance_Vibe TODO
                         if idx.value not in u:
                             continue
                         org_name = getattr(idx, "name", str(idx)).lower()
@@ -301,7 +311,9 @@ def evaluate(subs, recons):
                         if is_low_signal(water_arr, mask.get_array()):
                             continue
 
-                        results_by_model[water_fat_model_name].append({"sub": sub, "sequence": sequ, "org_name": org_name, "ref_mean": ref_mean, "new_mean": new_mean})
+                        results_by_model[water_fat_model_name].append(
+                            {"sub": sub, "sequence": sequ, "org_name": org_name, "ref_mean": ref_mean, "new_mean": new_mean}
+                        )
                         organs_seen.add(org_name)
 
                     # get mask; accept boolean or numeric mask
@@ -325,7 +337,9 @@ def evaluate(subs, recons):
                     new_mean = new_vals[idx].tolist()
                     colors = colors[idx].tolist()
 
-                    results_by_model_px[water_fat_model_name].append({"sub": sub, "sequence": sequ, "ref_mean": ref_mean, "new_mean": new_mean, "colors": colors})
+                    results_by_model_px[water_fat_model_name].append(
+                        {"sub": sub, "sequence": sequ, "ref_mean": ref_mean, "new_mean": new_mean, "colors": colors}
+                    )
 
                 except Exception as exc:
                     # print minimal info, but continue
@@ -433,7 +447,14 @@ import csv
 import os
 
 
-def print_latex_table(stats: dict, organ_list: list[str], outdir=OUTPUT_DIR, filename_tex="pdff_summary_all.tex", filename_csv="pdff_summary_all.csv", short=True):
+def print_latex_table(
+    stats: dict,
+    organ_list: list[str],
+    outdir=OUTPUT_DIR,
+    filename_tex="pdff_summary_all.tex",
+    filename_csv="pdff_summary_all.csv",
+    short=True,
+):
     """
     Build one LaTeX + CSV table summarizing per-organ statistics for all models side-by-side.
     Each model contributes three columns: Ref mean±SD, Model mean±SD, Bias±SD.
@@ -510,10 +531,18 @@ def print_latex_table(stats: dict, organ_list: list[str], outdir=OUTPUT_DIR, fil
 
                 else:
                     # Add to LaTeX
-                    row_tex.extend([f"{ref_mean:.3f} $\\pm$ {ref_std:.3f}", f"{new_mean:.3f} $\\pm$ {new_std:.3f}", f"{bias_mean:.3f} $\\pm$ {bias_std:.3f}"])
+                    row_tex.extend(
+                        [
+                            f"{ref_mean:.3f} $\\pm$ {ref_std:.3f}",
+                            f"{new_mean:.3f} $\\pm$ {new_std:.3f}",
+                            f"{bias_mean:.3f} $\\pm$ {bias_std:.3f}",
+                        ]
+                    )
 
                     # Add to CSV
-                    row_csv.extend([f"{ref_mean:.3f}", f"{ref_std:.3f}", f"{new_mean:.3f}", f"{new_std:.3f}", f"{bias_mean:.3f}", f"{bias_std:.3f}"])
+                    row_csv.extend(
+                        [f"{ref_mean:.3f}", f"{ref_std:.3f}", f"{new_mean:.3f}", f"{new_std:.3f}", f"{bias_mean:.3f}", f"{bias_std:.3f}"]
+                    )
 
         tex_lines.append(" & ".join(row_tex) + " \\\\")
         csv_rows.append(row_csv)
@@ -538,7 +567,9 @@ def print_latex_table(stats: dict, organ_list: list[str], outdir=OUTPUT_DIR, fil
     print(f"Wrote summary CSV to {out_csv}")
 
 
-def make_bland_altman_plots(results_by_model: dict, organ_list: list, outdir=OUTPUT_DIR, min_presence_rate: float = 0.5, min_N: int = 10, dpi: int = 300):
+def make_bland_altman_plots(
+    results_by_model: dict, organ_list: list, outdir=OUTPUT_DIR, min_presence_rate: float = 0.5, min_N: int = 10, dpi: int = 300
+):
     """
     Create one Bland-Altman plot per organ appearing in >= min_presence_rate fraction of subjects.
     Units are converted from promille (‰) to percent (%).

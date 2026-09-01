@@ -166,7 +166,9 @@ class VQModel(pl.LightningModule):
         with Optimizer(self, opt_0):
             # autoencoder
             optimizer_idx = 0
-            aeloss, log_dict_ae = self.loss(qloss, x, xrec, optimizer_idx, self.global_step, last_layer=self.get_last_layer(), split="train", predicted_indices=ind)
+            aeloss, log_dict_ae = self.loss(
+                qloss, x, xrec, optimizer_idx, self.global_step, last_layer=self.get_last_layer(), split="train", predicted_indices=ind
+            )
 
             self.log_dict(log_dict_ae, prog_bar=False, logger=True, on_step=True, on_epoch=True)
             self.log("AELoss", aeloss.detach().cpu().mean(), prog_bar=True)
@@ -175,7 +177,9 @@ class VQModel(pl.LightningModule):
         with Optimizer(self, opt_1):
             optimizer_idx = 1
             # discriminator
-            discloss, log_dict_disc = self.loss(qloss, x, xrec, optimizer_idx, self.global_step, last_layer=self.get_last_layer(), split="train")
+            discloss, log_dict_disc = self.loss(
+                qloss, x, xrec, optimizer_idx, self.global_step, last_layer=self.get_last_layer(), split="train"
+            )
             self.log_dict(log_dict_disc, prog_bar=False, logger=True, on_step=True, on_epoch=True)
             self.log("discloss", discloss.detach().cpu().mean(), prog_bar=True)
 
@@ -190,9 +194,13 @@ class VQModel(pl.LightningModule):
     def _validation_step(self, batch, batch_idx, suffix=""):  # noqa: ARG002
         x = self.get_input(batch, self.image_key)
         xrec, qloss, ind = self(x, return_pred_indices=True)
-        aeloss, log_dict_ae = self.loss(qloss, x, xrec, 0, self.global_step, last_layer=self.get_last_layer(), split="val" + suffix, predicted_indices=ind)
+        aeloss, log_dict_ae = self.loss(
+            qloss, x, xrec, 0, self.global_step, last_layer=self.get_last_layer(), split="val" + suffix, predicted_indices=ind
+        )
 
-        discloss, log_dict_disc = self.loss(qloss, x, xrec, 1, self.global_step, last_layer=self.get_last_layer(), split="val" + suffix, predicted_indices=ind)
+        discloss, log_dict_disc = self.loss(
+            qloss, x, xrec, 1, self.global_step, last_layer=self.get_last_layer(), split="val" + suffix, predicted_indices=ind
+        )
         rec_loss = log_dict_ae[f"val{suffix}/rec_loss"]
         self.log(f"val{suffix}/rec_loss", rec_loss, prog_bar=True, logger=True, on_step=False, on_epoch=True, sync_dist=True)
         self.log(f"val{suffix}/aeloss", aeloss, prog_bar=True, logger=True, on_step=False, on_epoch=True, sync_dist=True)
@@ -365,7 +373,9 @@ class AutoencoderKL(pl.LightningModule):
             # train encoder+decoder+logvar
             optimizer_idx = 0
 
-            aeloss, log_dict_ae = self.loss(inputs, reconstructions, posterior, optimizer_idx, self.global_step, last_layer=self.get_last_layer(), split="train")
+            aeloss, log_dict_ae = self.loss(
+                inputs, reconstructions, posterior, optimizer_idx, self.global_step, last_layer=self.get_last_layer(), split="train"
+            )
             self.log("aeloss", aeloss, prog_bar=True, logger=True, on_step=True, on_epoch=True)
             self.log_dict(log_dict_ae, prog_bar=False, logger=True, on_step=True, on_epoch=False)
             self.manual_backward(aeloss)
@@ -374,7 +384,9 @@ class AutoencoderKL(pl.LightningModule):
             # train the discriminator
             optimizer_idx = 1
 
-            discloss, log_dict_disc = self.loss(inputs, reconstructions, posterior, optimizer_idx, self.global_step, last_layer=self.get_last_layer(), split="train")
+            discloss, log_dict_disc = self.loss(
+                inputs, reconstructions, posterior, optimizer_idx, self.global_step, last_layer=self.get_last_layer(), split="train"
+            )
 
             self.log("discloss", discloss, prog_bar=True, logger=True, on_step=True, on_epoch=True)
             self.log_dict(log_dict_disc, prog_bar=False, logger=True, on_step=True, on_epoch=False)
@@ -383,9 +395,13 @@ class AutoencoderKL(pl.LightningModule):
     def validation_step(self, batch, batch_idx):  # noqa: ARG002
         inputs = self.get_input(batch, self.image_key)
         reconstructions, posterior = self(inputs)
-        aeloss, log_dict_ae = self.loss(inputs, reconstructions, posterior, 0, self.global_step, last_layer=self.get_last_layer(), split="val")
+        aeloss, log_dict_ae = self.loss(
+            inputs, reconstructions, posterior, 0, self.global_step, last_layer=self.get_last_layer(), split="val"
+        )
 
-        discloss, log_dict_disc = self.loss(inputs, reconstructions, posterior, 1, self.global_step, last_layer=self.get_last_layer(), split="val")
+        discloss, log_dict_disc = self.loss(
+            inputs, reconstructions, posterior, 1, self.global_step, last_layer=self.get_last_layer(), split="val"
+        )
 
         self.log("val/rec_loss", log_dict_ae["val/rec_loss"])
         self.log_dict(log_dict_ae)
@@ -395,7 +411,10 @@ class AutoencoderKL(pl.LightningModule):
     def configure_optimizers(self):
         lr = self.learning_rate
         opt_ae = torch.optim.Adam(
-            list(self.encoder.parameters()) + list(self.decoder.parameters()) + list(self.quant_conv.parameters()) + list(self.post_quant_conv.parameters()),
+            list(self.encoder.parameters())
+            + list(self.decoder.parameters())
+            + list(self.quant_conv.parameters())
+            + list(self.post_quant_conv.parameters()),
             lr=lr,
             betas=(0.5, 0.9),
         )

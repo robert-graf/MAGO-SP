@@ -66,7 +66,12 @@ def add_pdff(water_p: NII, fat_p: NII, out, water_gt: NII, fat_gt: NII, total_vi
         abs_delta_pdff_vert = np.mean(abs_delta_pdff, where=vert)
         abs_delta_pdff_kidny = np.mean(abs_delta_pdff, where=kidny)
         print(pdff_p.max(), pdff_gt.max(), abs_delta_pdff_liver)
-    out_ = {"kidney": abs_delta_pdff_kidny, "liver": abs_delta_pdff_liver, "paraspinal": abs_delta_pdff_paraspinal, "vertbody": abs_delta_pdff_vert}
+    out_ = {
+        "kidney": abs_delta_pdff_kidny,
+        "liver": abs_delta_pdff_liver,
+        "paraspinal": abs_delta_pdff_paraspinal,
+        "vertbody": abs_delta_pdff_vert,
+    }
     for k, v in out_.items():
         out[k] = v
 
@@ -163,7 +168,11 @@ def save(out_w, out_f, out_r, key, total_vibe):
 
 def reload(key):
     if Path(f"{out_path}/{sub}/r_{key}.nii.gz").exists():
-        return to_nii(f"{out_path}/{sub}/w_{key}.nii.gz"), to_nii(f"{out_path}/{sub}/f_{key}.nii.gz"), to_nii(f"{out_path}/{sub}/r_{key}.nii.gz")
+        return (
+            to_nii(f"{out_path}/{sub}/w_{key}.nii.gz"),
+            to_nii(f"{out_path}/{sub}/f_{key}.nii.gz"),
+            to_nii(f"{out_path}/{sub}/r_{key}.nii.gz"),
+        )
     return None
 
 
@@ -188,7 +197,13 @@ for sub in subjs:
     print(f)
     print(dataset)
     water_image = BIDS_FILE(Path(f), dataset)
-    args = {"file_type": "nii.gz", "parent": derivative, "info": {"desc": "reconstructed"}, "make_parent": False, "non_strict_mode": non_strict_mode}
+    args = {
+        "file_type": "nii.gz",
+        "parent": derivative,
+        "info": {"desc": "reconstructed"},
+        "make_parent": False,
+        "non_strict_mode": non_strict_mode,
+    }
     args["info"]["part"] = "water"
     out_reconstruction_water = water_image.get_changed_path(**args)
     args["info"]["part"] = "fat"
@@ -291,7 +306,9 @@ for sub in subjs:
         r = reload(key)
         if r is None:
             magnitude = [a.get_array() for a in magnitude_nii]
-            out_w, out_f, out_r, _ = mago_sp(magnitude, signal_prior.get_array(), ((water_gt + fat_gt) - signal_prior).get_array(), use_rician=True)
+            out_w, out_f, out_r, _ = mago_sp(
+                magnitude, signal_prior.get_array(), ((water_gt + fat_gt) - signal_prior).get_array(), use_rician=True
+            )
             out_w = save(out_w, out_f, out_r, key, total_vibe)
         else:
             out_w, out_f, out_r = r

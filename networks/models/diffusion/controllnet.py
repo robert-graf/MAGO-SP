@@ -26,7 +26,13 @@ def ControlLDM_from_LDM(ldm_config_path: dict, ldm_ckpt_path, *args, **kwargs):
     first_stage_config = config.pop("first_stage_config")
     cond_stage_config = config.pop("cond_stage_config")
     model = ControlLDM(
-        *args, unet_config=unet_config, first_stage_config=first_stage_config, cond_stage_config=cond_stage_config, ckpt_path=ldm_ckpt_path, **config, **kwargs
+        *args,
+        unet_config=unet_config,
+        first_stage_config=first_stage_config,
+        cond_stage_config=cond_stage_config,
+        ckpt_path=ldm_ckpt_path,
+        **config,
+        **kwargs,
     )
     return model
 
@@ -294,7 +300,10 @@ class ControlNet(nn.Module):
             self.num_res_blocks = len(channel_mult) * [num_res_blocks]
         else:
             if len(num_res_blocks) != len(channel_mult):
-                raise ValueError("provide num_res_blocks either as an int (globally constant) or " "as a list/tuple (per-level) with the same length as channel_mult")
+                raise ValueError(
+                    "provide num_res_blocks either as an int (globally constant) or "
+                    "as a list/tuple (per-level) with the same length as channel_mult"
+                )
             self.num_res_blocks = num_res_blocks
         if disable_self_attentions is not None:
             # should be a list of booleans, indicating whether to disable self-attention in TransformerBlocks or not
@@ -380,7 +389,11 @@ class ControlNet(nn.Module):
                     if not exists(num_attention_blocks) or nr < num_attention_blocks[level]:  # type: ignore
                         layers.append(
                             AttentionBlock(
-                                ch, use_checkpoint=use_checkpoint, num_heads=num_heads, num_head_channels=dim_head, use_new_attention_order=use_new_attention_order
+                                ch,
+                                use_checkpoint=use_checkpoint,
+                                num_heads=num_heads,
+                                num_head_channels=dim_head,
+                                use_new_attention_order=use_new_attention_order,
                             )
                             if not use_spatial_transformer
                             else SpatialTransformer(
@@ -432,7 +445,13 @@ class ControlNet(nn.Module):
             dim_head = ch // num_heads if use_spatial_transformer else num_head_channels
         self.middle_block = TimestepEmbedSequential(
             ResBlock(ch, time_embed_dim, dropout, dims=dims, use_checkpoint=use_checkpoint, use_scale_shift_norm=use_scale_shift_norm),
-            AttentionBlock(ch, use_checkpoint=use_checkpoint, num_heads=num_heads, num_head_channels=dim_head, use_new_attention_order=use_new_attention_order)
+            AttentionBlock(
+                ch,
+                use_checkpoint=use_checkpoint,
+                num_heads=num_heads,
+                num_head_channels=dim_head,
+                use_new_attention_order=use_new_attention_order,
+            )
             if not use_spatial_transformer
             else SpatialTransformer(  # always uses a self-attn
                 ch,

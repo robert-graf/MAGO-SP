@@ -107,7 +107,9 @@ class LatentDiffusion(DDPM):
             print(f"setting self.scale_factor to {self.scale_factor}")
             print("### USING STD-RESCALING ###")
 
-    def register_schedule(self, given_betas=None, beta_schedule="linear", timesteps=1000, linear_start=1e-4, linear_end=2e-2, cosine_s=8e-3):
+    def register_schedule(
+        self, given_betas=None, beta_schedule="linear", timesteps=1000, linear_start=1e-4, linear_end=2e-2, cosine_s=8e-3
+    ):
         super().register_schedule(given_betas, beta_schedule, timesteps, linear_start, linear_end, cosine_s)
 
         self.shorten_cond_schedule = self.num_timesteps_cond > 1  # type: ignore
@@ -143,7 +145,9 @@ class LatentDiffusion(DDPM):
             self.cond_stage_model = model
 
     def _get_denoise_row_from_list(self, samples, desc="", force_no_decoder_quantization=False):
-        denoise_row = [self.decode_first_stage(zd.to(self.device), force_not_quantize=force_no_decoder_quantization) for zd in tqdm(samples, desc=desc)]
+        denoise_row = [
+            self.decode_first_stage(zd.to(self.device), force_not_quantize=force_no_decoder_quantization) for zd in tqdm(samples, desc=desc)
+        ]
         n_imgs_per_row = len(denoise_row)
         denoise_row = torch.stack(denoise_row)  # n_log_step, n_row, C, H, W
         denoise_grid = rearrange(denoise_row, "n b c h w -> b n c h w")
@@ -205,7 +209,9 @@ class LatentDiffusion(DDPM):
 
         if self.split_input_params["tie_braker"]:
             L_weighting = self.delta_border(Ly, Lx)
-            L_weighting = torch.clip(L_weighting, self.split_input_params["clip_min_tie_weight"], self.split_input_params["clip_max_tie_weight"])
+            L_weighting = torch.clip(
+                L_weighting, self.split_input_params["clip_min_tie_weight"], self.split_input_params["clip_max_tie_weight"]
+            )
 
             L_weighting = L_weighting.view(1, 1, Ly * Lx).to(device)
             weighting = weighting * L_weighting
@@ -236,7 +242,12 @@ class LatentDiffusion(DDPM):
             fold_params = {"kernel_size": kernel_size, "dilation": 1, "padding": 0, "stride": stride}
             unfold = torch.nn.Unfold(**fold_params)
 
-            fold_params2 = {"kernel_size": (kernel_size[0] * uf, kernel_size[0] * uf), "dilation": 1, "padding": 0, "stride": (stride[0] * uf, stride[1] * uf)}
+            fold_params2 = {
+                "kernel_size": (kernel_size[0] * uf, kernel_size[0] * uf),
+                "dilation": 1,
+                "padding": 0,
+                "stride": (stride[0] * uf, stride[1] * uf),
+            }
             fold = torch.nn.Fold(output_size=(x.shape[2] * uf, x.shape[3] * uf), **fold_params2)
 
             weighting = self.get_weighting(kernel_size[0] * uf, kernel_size[1] * uf, Ly, Lx, x.device).to(x.dtype)
@@ -247,7 +258,12 @@ class LatentDiffusion(DDPM):
             fold_params = {"kernel_size": kernel_size, "dilation": 1, "padding": 0, "stride": stride}
             unfold = torch.nn.Unfold(**fold_params)
 
-            fold_params2 = {"kernel_size": (kernel_size[0] // df, kernel_size[0] // df), "dilation": 1, "padding": 0, "stride": (stride[0] // df, stride[1] // df)}
+            fold_params2 = {
+                "kernel_size": (kernel_size[0] // df, kernel_size[0] // df),
+                "dilation": 1,
+                "padding": 0,
+                "stride": (stride[0] // df, stride[1] // df),
+            }
             fold = torch.nn.Fold(output_size=(x.shape[2] // df, x.shape[3] // df), **fold_params2)
 
             weighting = self.get_weighting(kernel_size[0] // df, kernel_size[1] // df, Ly, Lx, x.device).to(x.dtype)
@@ -349,7 +365,10 @@ class LatentDiffusion(DDPM):
 
                 # 2. apply model loop over last dim
                 if isinstance(self.first_stage_model, VQModelInterface):
-                    output_list = [self.first_stage_model.decode(z[:, :, :, :, i], force_not_quantize=predict_cids or force_not_quantize) for i in range(z.shape[-1])]
+                    output_list = [
+                        self.first_stage_model.decode(z[:, :, :, :, i], force_not_quantize=predict_cids or force_not_quantize)
+                        for i in range(z.shape[-1])
+                    ]
                 else:
                     output_list = [self.first_stage_model.decode(z[:, :, :, :, i]) for i in range(z.shape[-1])]
 
@@ -401,7 +420,10 @@ class LatentDiffusion(DDPM):
 
                 # 2. apply model loop over last dim
                 if isinstance(self.first_stage_model, VQModelInterface):
-                    output_list = [self.first_stage_model.decode(z[:, :, :, :, i], force_not_quantize=predict_cids or force_not_quantize) for i in range(z.shape[-1])]
+                    output_list = [
+                        self.first_stage_model.decode(z[:, :, :, :, i], force_not_quantize=predict_cids or force_not_quantize)
+                        for i in range(z.shape[-1])
+                    ]
                 else:
                     output_list = [self.first_stage_model.decode(z[:, :, :, :, i]) for i in range(z.shape[-1])]
 
@@ -513,7 +535,9 @@ class LatentDiffusion(DDPM):
             z = z.view((z.shape[0], -1, ks[0], ks[1], z.shape[-1]))  # (bn, nc, ks[0], ks[1], L )
             z_list = [z[:, :, :, :, i] for i in range(z.shape[-1])]
 
-            if self.cond_stage_key in ["image", "LR_image", "segmentation", "bbox_img"] and self.conditioning_key:  # TODO check for completeness
+            if (
+                self.cond_stage_key in ["image", "LR_image", "segmentation", "bbox_img"] and self.conditioning_key
+            ):  # TODO check for completeness
                 c_key = next(iter(cond.keys()))  # get key
                 c = next(iter(cond.values()))  # get value
                 assert len(c) == 1  # TODO extend to list with more than one elem
@@ -539,12 +563,18 @@ class LatentDiffusion(DDPM):
                 # get top left positions of patches as conforming for the bbox tokenizer, therefore we
                 # need to rescale the tl patch coordinates to be in between (0,1)
                 tl_patch_coordinates = [
-                    (rescale_latent * stride[0] * (patch_nr % n_patches_per_row) / full_img_w, rescale_latent * stride[1] * (patch_nr // n_patches_per_row) / full_img_h)
+                    (
+                        rescale_latent * stride[0] * (patch_nr % n_patches_per_row) / full_img_w,
+                        rescale_latent * stride[1] * (patch_nr // n_patches_per_row) / full_img_h,
+                    )
                     for patch_nr in range(z.shape[-1])
                 ]
 
                 # patch_limits are tl_coord, width and height coordinates as (x_tl, y_tl, h, w)
-                patch_limits = [(x_tl, y_tl, rescale_latent * ks[0] / full_img_w, rescale_latent * ks[1] / full_img_h) for x_tl, y_tl in tl_patch_coordinates]
+                patch_limits = [
+                    (x_tl, y_tl, rescale_latent * ks[0] / full_img_w, rescale_latent * ks[1] / full_img_h)
+                    for x_tl, y_tl in tl_patch_coordinates
+                ]
                 # patch_values = [(np.arange(x_tl,min(x_tl+ks, 1.)),np.arange(y_tl,min(y_tl+ks, 1.))) for x_tl, y_tl in tl_patch_coordinates]
 
                 # tokenize crop coordinates for the bounding boxes of the respective patches
@@ -643,7 +673,16 @@ class LatentDiffusion(DDPM):
         return loss, loss_dict
 
     def p_mean_variance(
-        self, x, c, t, clip_denoised: bool, return_codebook_ids=False, quantize_denoised=False, return_x0=False, score_corrector=None, corrector_kwargs=None
+        self,
+        x,
+        c,
+        t,
+        clip_denoised: bool,
+        return_codebook_ids=False,
+        quantize_denoised=False,
+        return_x0=False,
+        score_corrector=None,
+        corrector_kwargs=None,
     ):
         t_in = t
         model_out = self.apply_model(x, t_in, c, return_ids=return_codebook_ids)
@@ -755,13 +794,17 @@ class LatentDiffusion(DDPM):
         intermediates = []
         if cond is not None:
             if isinstance(cond, dict):
-                cond = {key: cond[key][:batch_size] if not isinstance(cond[key], list) else [x[:batch_size] for x in cond[key]] for key in cond}
+                cond = {
+                    key: cond[key][:batch_size] if not isinstance(cond[key], list) else [x[:batch_size] for x in cond[key]] for key in cond
+                }
             else:
                 cond = [c[:batch_size] for c in cond] if isinstance(cond, list) else cond[:batch_size]
 
         if start_T is not None:
             timesteps = min(timesteps, start_T)
-        iterator = tqdm(reversed(range(timesteps)), desc="Progressive Generation", total=timesteps) if verbose else reversed(range(timesteps))
+        iterator = (
+            tqdm(reversed(range(timesteps)), desc="Progressive Generation", total=timesteps) if verbose else reversed(range(timesteps))
+        )
         if isinstance(temperature, (float, int)):
             temperature = [temperature] * timesteps
 
@@ -857,17 +900,38 @@ class LatentDiffusion(DDPM):
 
     @torch.no_grad()
     def sample(
-        self, cond, batch_size=16, return_intermediates=False, x_T=None, verbose=True, timesteps=None, quantize_denoised=False, mask=None, x0=None, shape=None, **_kwargs
+        self,
+        cond,
+        batch_size=16,
+        return_intermediates=False,
+        x_T=None,
+        verbose=True,
+        timesteps=None,
+        quantize_denoised=False,
+        mask=None,
+        x0=None,
+        shape=None,
+        **_kwargs,
     ):
         if shape is None:
             shape = (batch_size, self.channels, self.image_size, self.image_size)
         if cond is not None:
             if isinstance(cond, dict):
-                cond = {key: cond[key][:batch_size] if not isinstance(cond[key], list) else [x[:batch_size] for x in cond[key]] for key in cond}
+                cond = {
+                    key: cond[key][:batch_size] if not isinstance(cond[key], list) else [x[:batch_size] for x in cond[key]] for key in cond
+                }
             else:
                 cond = [c[:batch_size] for c in cond] if isinstance(cond, list) else cond[:batch_size]
         return self.p_sample_loop(
-            cond, shape, return_intermediates=return_intermediates, x_T=x_T, verbose=verbose, timesteps=timesteps, quantize_denoised=quantize_denoised, mask=mask, x0=x0
+            cond,
+            shape,
+            return_intermediates=return_intermediates,
+            x_T=x_T,
+            verbose=verbose,
+            timesteps=timesteps,
+            quantize_denoised=quantize_denoised,
+            mask=mask,
+            x0=x0,
         )
 
     @torch.no_grad()
@@ -958,10 +1022,16 @@ class LatentDiffusion(DDPM):
                 denoise_grid = self._get_denoise_row_from_list(z_denoise_row)
                 log["denoise_row"] = denoise_grid
 
-            if quantize_denoised and not isinstance(self.first_stage_model, AutoencoderKL) and not isinstance(self.first_stage_model, IdentityFirstStage):
+            if (
+                quantize_denoised
+                and not isinstance(self.first_stage_model, AutoencoderKL)
+                and not isinstance(self.first_stage_model, IdentityFirstStage)
+            ):
                 # also display when quantizing x0 while sampling
                 with self.ema_scope("Plotting Quantized Denoised"):
-                    samples, z_denoise_row = self.sample_log(cond=c, batch_size=N, ddim=use_ddim, ddim_steps=ddim_steps, eta=ddim_eta, quantize_denoised=True)
+                    samples, z_denoise_row = self.sample_log(
+                        cond=c, batch_size=N, ddim=use_ddim, ddim_steps=ddim_steps, eta=ddim_eta, quantize_denoised=True
+                    )
                     # samples, z_denoise_row = self.sample(cond=c, batch_size=N, return_intermediates=True,
                     #                                      quantize_denoised=True)
                 x_samples = self.decode_first_stage(samples.to(self.device))  # type: ignore
@@ -975,14 +1045,18 @@ class LatentDiffusion(DDPM):
                 mask[:, h // 4 : 3 * h // 4, w // 4 : 3 * w // 4] = 0.0
                 mask = mask[:, None, ...]
                 with self.ema_scope("Plotting Inpaint"):
-                    samples, _ = self.sample_log(cond=c, batch_size=N, ddim=use_ddim, eta=ddim_eta, ddim_steps=ddim_steps, x0=z[:N], mask=mask)
+                    samples, _ = self.sample_log(
+                        cond=c, batch_size=N, ddim=use_ddim, eta=ddim_eta, ddim_steps=ddim_steps, x0=z[:N], mask=mask
+                    )
                 x_samples = self.decode_first_stage(samples.to(self.device))  # type: ignore
                 log["samples_inpainting"] = x_samples
                 # log["mask"] = mask
 
                 # outpaint
                 with self.ema_scope("Plotting Outpaint"):
-                    samples, _ = self.sample_log(cond=c, batch_size=N, ddim=use_ddim, eta=ddim_eta, ddim_steps=ddim_steps, x0=z[:N], mask=mask)
+                    samples, _ = self.sample_log(
+                        cond=c, batch_size=N, ddim=use_ddim, eta=ddim_eta, ddim_steps=ddim_steps, x0=z[:N], mask=mask
+                    )
                 x_samples = self.decode_first_stage(samples.to(self.device))  # type: ignore
                 log["samples_outpainting"] = x_samples
 

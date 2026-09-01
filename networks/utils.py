@@ -70,7 +70,7 @@ def mean_flat(tensor):
 def count_params(model, verbose=False):
     total_params = sum(p.numel() for p in model.parameters())
     if verbose:
-        print(f"{model.__class__.__name__} has {total_params * 1.e-6:.2f} M params.")
+        print(f"{model.__class__.__name__} has {total_params * 1.0e-6:.2f} M params.")
     return total_params
 
 
@@ -88,7 +88,7 @@ def instantiate_from_config(config: dict, **parms):
         if config in ("__is_first_stage__", "__is_unconditional__"):
             return None
         raise KeyError("Expected key `target` to instantiate.")
-    return get_obj_from_str(config["target"])(**config.get("params", {}),**parms)
+    return get_obj_from_str(config["target"])(**config.get("params", {}), **parms)
 
 
 def get_obj_from_str(string, reload=False):
@@ -124,7 +124,9 @@ def parallel_data_prefetch(func: abc.Callable, data, n_proc, target_data_type="n
             data = list(data.values())
         data = np.asarray(data) if target_data_type == "ndarray" else list(data)
     else:
-        raise TypeError(f"The data, that shall be processed parallel has to be either an np.ndarray or an Iterable, but is actually {type(data)}.")
+        raise TypeError(
+            f"The data, that shall be processed parallel has to be either an np.ndarray or an Iterable, but is actually {type(data)}."
+        )
 
     if cpu_intensive:
         q = mp.Queue(1000)

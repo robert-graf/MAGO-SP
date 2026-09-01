@@ -120,7 +120,11 @@ if __name__ == "__main__":
                     freqs_ppm=freqs_ppm,
                     reconstruction_name=reconstruction_name,
                 )
-                if r.original_swap_stat is not None and r.original_swap_stat.affected_structures is not None and len(r.original_swap_stat.affected_structures) != 0:
+                if (
+                    r.original_swap_stat is not None
+                    and r.original_swap_stat.affected_structures is not None
+                    and len(r.original_swap_stat.affected_structures) != 0
+                ):
                     log.print(sub, sequ, r.original_swap_stat.affected_structures)
                     print(sub, sequ, r.original_swap_stat.affected_structures)
                 if r.needs_correction:

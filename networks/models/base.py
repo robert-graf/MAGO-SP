@@ -96,7 +96,20 @@ class BaseLightningModule(pl.LightningModule):
                 (self._buffer_dict[k]).pop(0)
             d[k] = np.mean(np.array(self._buffer_dict[k])).item()
 
-        super().log_dict(d, prog_bar, logger, on_step, on_epoch, reduce_fx, enable_graph, sync_dist, sync_dist_group, add_dataloader_idx, batch_size, rank_zero_only)
+        super().log_dict(
+            d,
+            prog_bar,
+            logger,
+            on_step,
+            on_epoch,
+            reduce_fx,
+            enable_graph,
+            sync_dist,
+            sync_dist_group,
+            add_dataloader_idx,
+            batch_size,
+            rank_zero_only,
+        )
 
     @torch.no_grad()
     def validation_step(self, batch, batch_idx):  # noqa: ARG002

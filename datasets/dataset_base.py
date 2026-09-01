@@ -115,7 +115,9 @@ class BaseDataset(Dataset):
             c_t = self.resize_corp
             i, j, h, w = c_t.get_params(target, c_t.scale, c_t.ratio)  # type: ignore
             tf.resized_crop(target, i, j, h, w, c_t.size, c_t.interpolation, antialias=c_t.antialias)  # type: ignore
-            tf.resized_crop(segmentation, i, j, h, w, c_t.size, c_t.interpolation, antialias=c_t.antialias) if segmentation is not None else None  # type: ignore
+            tf.resized_crop(
+                segmentation, i, j, h, w, c_t.size, c_t.interpolation, antialias=c_t.antialias
+            ) if segmentation is not None else None  # type: ignore
 
         # Padding
         w, h = target.shape[-2], target.shape[-1]
@@ -152,7 +154,9 @@ class BaseDataset(Dataset):
             segmentation = segmentation.swapaxes(-1, -2) if segmentation is not None else None
         # Reassemble targets and segmentations into a single dictionary with original keys
         processed_target = {key: target[i] for i, key in enumerate(target_items.keys())}
-        processed_segmentation = {key: segmentation[i] for i, key in enumerate(segmentation_items.keys())} if segmentation is not None else {}
+        processed_segmentation = (
+            {key: segmentation[i] for i, key in enumerate(segmentation_items.keys())} if segmentation is not None else {}
+        )
 
         if self.linspace:
             l1 = np.tile(np.linspace(0, 1, original_shape[0]), (1, original_shape[1]))

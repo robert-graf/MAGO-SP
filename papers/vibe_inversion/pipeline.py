@@ -87,7 +87,9 @@ def detect_inversion_seg(
     if not override and out_detection_water and out_detection_fat and out_detection_water.exists() and out_detection_fat.exists():
         return out_detection_water, out_detection_fat
     # Run segmentation
-    a = run_nnunet([water_image, inphase_file, outphase_file], out_detection_water, override=override, dataset_id=282, gpu=gpu, ddevice=ddevice)
+    a = run_nnunet(
+        [water_image, inphase_file, outphase_file], out_detection_water, override=override, dataset_id=282, gpu=gpu, ddevice=ddevice
+    )
     b = run_nnunet([fat_image, inphase_file, outphase_file], out_detection_fat, override=override, dataset_id=282, gpu=gpu, ddevice=ddevice)
     # Delete files if we
     return a, b
@@ -203,7 +205,13 @@ def predict_signal_prior(
     raise NotImplementedError(len(s_magnitude))
 
 
-def make_pdff_pdwf(water_image: Image_Reference, fat_image: Image_Reference, pdff_out: str | Path | None = None, pdwf_out: str | Path | None = None, override=False):
+def make_pdff_pdwf(
+    water_image: Image_Reference,
+    fat_image: Image_Reference,
+    pdff_out: str | Path | None = None,
+    pdwf_out: str | Path | None = None,
+    override=False,
+):
     if not override and pdff_out is not None and Path(pdff_out).exists() and pdwf_out is not None and Path(pdwf_out).exists():
         return pdff_out, pdwf_out
     fat = to_nii(fat_image)
@@ -312,13 +320,23 @@ def recon_fat_water_model(
     # Validate the input
     assert len(s_magnitude) > 1, "s_magnitude must contain at least two magnitude image."
 
-    if not override and all(i is not None and Path(i).exists() for i in [out_reconstruction_water, out_reconstruction_fat, out_reconstruction_r2s]):
+    if not override and all(
+        i is not None and Path(i).exists() for i in [out_reconstruction_water, out_reconstruction_fat, out_reconstruction_r2s]
+    ):
         out_w_nii = NII.load(out_reconstruction_water, False) if out_reconstruction_water is not None else None
         out_f_nii = NII.load(out_reconstruction_fat, False) if out_reconstruction_fat is not None else None
         out_r_nii = NII.load(out_reconstruction_r2s, False) if out_reconstruction_r2s is not None else None
-        out_l_nii = NII.load(out_reconstruction_loss, False) if out_reconstruction_loss is not None and Path(out_reconstruction_loss).exists() else None
+        out_l_nii = (
+            NII.load(out_reconstruction_loss, False)
+            if out_reconstruction_loss is not None and Path(out_reconstruction_loss).exists()
+            else None
+        )
         return out_w_nii, out_f_nii, out_r_nii, out_l_nii
-    if len(s_magnitude) == 2 and not override and all(i is not None and Path(i).exists() for i in [out_reconstruction_water, out_reconstruction_fat]):
+    if (
+        len(s_magnitude) == 2
+        and not override
+        and all(i is not None and Path(i).exists() for i in [out_reconstruction_water, out_reconstruction_fat])
+    ):
         out_w_nii = NII.load(out_reconstruction_water, False)
         out_f_nii = NII.load(out_reconstruction_fat, False)
         return out_w_nii, out_f_nii, None, None
@@ -332,9 +350,13 @@ def recon_fat_water_model(
 
         if vibe_from_signal:
             # Use inphase and outphase to compute water and fat
-            out_w, out_f = vibe_separate_phase_from_guess(s_magnitude_arr[1].squeeze(), s_magnitude_arr[0].squeeze(), water_prior.get_array(), smooth=True)
+            out_w, out_f = vibe_separate_phase_from_guess(
+                s_magnitude_arr[1].squeeze(), s_magnitude_arr[0].squeeze(), water_prior.get_array(), smooth=True
+            )
         else:
-            assert water_image is not None and fat_image is not None, "use vibe_from_signal=True if you do not want ot use water_image/fat_image"
+            assert water_image is not None and fat_image is not None, (
+                "use vibe_from_signal=True if you do not want ot use water_image/fat_image"
+            )
             # Use water and fat and just swap pixels
             out_w, out_f = vibe_separate_water_fat_from_guess(to_nii(water_image), to_nii(fat_image), water_prior)
         out_r = None
@@ -587,10 +609,25 @@ def pipeline(
         if out_reconstruction_pdwf is not None or out_reconstruction_pdff is not None:
             make_pdff_pdwf(out_w_nii, out_f_nii, out_reconstruction_pdff, out_reconstruction_pdwf)
         if not evaluate_reconstructed:
-            return Result(original_swap_stat=swap_static, needs_correction=True, out_w_nii=out_w_nii, out_f_nii=out_f_nii, out_r_nii=out_r_nii, out_l_nii=out_l_nii)
+            return Result(
+                original_swap_stat=swap_static,
+                needs_correction=True,
+                out_w_nii=out_w_nii,
+                out_f_nii=out_f_nii,
+                out_r_nii=out_r_nii,
+                out_l_nii=out_l_nii,
+            )
         # Compute detection
         water_detection, fat_detection = detect_inversion_seg(
-            s_magnitude[0], s_magnitude[1], out_w_nii, out_f_nii, out_detection_water_reconstructed, out_detection_fat_reconstructed, override, ddevice, gpu
+            s_magnitude[0],
+            s_magnitude[1],
+            out_w_nii,
+            out_f_nii,
+            out_detection_water_reconstructed,
+            out_detection_fat_reconstructed,
+            override,
+            ddevice,
+            gpu,
         )
         swap_static_rec = make_swap_statistic_single(
             str(out_reconstruction_water),
@@ -601,7 +638,9 @@ def pipeline(
             roi_exclude=roi_exclude,
             ignore_vibe_labels=ignore_vibe_labels,
         )
-        needs_manuel_intervention = swap_static_rec.count_fat >= threshold_swapped_voxels or swap_static_rec.count_disagree >= threshold_disagree_voxels
+        needs_manuel_intervention = (
+            swap_static_rec.count_fat >= threshold_swapped_voxels or swap_static_rec.count_disagree >= threshold_disagree_voxels
+        )
         return Result(
             original_swap_stat=swap_static,
             needs_correction=True,

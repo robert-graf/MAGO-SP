@@ -92,7 +92,12 @@ class DDPM(base.BaseLightningModule):
             self.monitor = monitor
 
         self.register_schedule(
-            given_betas=given_betas, beta_schedule=beta_schedule, timesteps=timesteps, linear_start=linear_start, linear_end=linear_end, cosine_s=cosine_s
+            given_betas=given_betas,
+            beta_schedule=beta_schedule,
+            timesteps=timesteps,
+            linear_start=linear_start,
+            linear_end=linear_end,
+            cosine_s=cosine_s,
         )
 
         self.loss_type = loss_type
@@ -106,8 +111,14 @@ class DDPM(base.BaseLightningModule):
             self.init_from_ckpt(ckpt_path, ignore_keys=ignore_keys, only_model=load_only_unet)
         self.clamp = clamp
 
-    def register_schedule(self, given_betas=None, beta_schedule="linear", timesteps=1000, linear_start=1e-4, linear_end=2e-2, cosine_s=8e-3):
-        betas = given_betas if exists(given_betas) else make_beta_schedule(beta_schedule, timesteps, linear_start=linear_start, linear_end=linear_end, cosine_s=cosine_s)
+    def register_schedule(
+        self, given_betas=None, beta_schedule="linear", timesteps=1000, linear_start=1e-4, linear_end=2e-2, cosine_s=8e-3
+    ):
+        betas = (
+            given_betas
+            if exists(given_betas)
+            else make_beta_schedule(beta_schedule, timesteps, linear_start=linear_start, linear_end=linear_end, cosine_s=cosine_s)
+        )
         alphas = 1.0 - betas  # type: ignore
         alphas_cumprod = np.cumprod(alphas, axis=0)
         alphas_cumprod_prev = np.append(1.0, alphas_cumprod[:-1])
@@ -132,7 +143,9 @@ class DDPM(base.BaseLightningModule):
         self.register_buffer("sqrt_recipm1_alphas_cumprod", to_torch(np.sqrt(1.0 / alphas_cumprod - 1)))
 
         # calculations for posterior q(x_{t-1} | x_t, x_0)
-        posterior_variance = (1 - self.v_posterior) * betas * (1.0 - alphas_cumprod_prev) / (1.0 - alphas_cumprod) + self.v_posterior * betas  # type: ignore
+        posterior_variance = (1 - self.v_posterior) * betas * (1.0 - alphas_cumprod_prev) / (
+            1.0 - alphas_cumprod
+        ) + self.v_posterior * betas  # type: ignore
         # above: equal to 1. / (1. / (1. - alpha_cumprod_tm1) + alpha_t / beta_t)
         self.register_buffer("posterior_variance", to_torch(posterior_variance))
         # below: log calculation clipped because the posterior variance is 0 at the beginning of the diffusion chain
@@ -164,10 +177,16 @@ class DDPM(base.BaseLightningModule):
         return mean, variance, log_variance
 
     def predict_start_from_noise(self, x_t, t, noise):
-        return extract_into_tensor(self.sqrt_recip_alphas_cumprod, t, x_t.shape) * x_t - extract_into_tensor(self.sqrt_recipm1_alphas_cumprod, t, x_t.shape) * noise
+        return (
+            extract_into_tensor(self.sqrt_recip_alphas_cumprod, t, x_t.shape) * x_t
+            - extract_into_tensor(self.sqrt_recipm1_alphas_cumprod, t, x_t.shape) * noise
+        )
 
     def q_posterior(self, x_start, x_t, t):
-        posterior_mean = extract_into_tensor(self.posterior_mean_coef1, t, x_t.shape) * x_start + extract_into_tensor(self.posterior_mean_coef2, t, x_t.shape) * x_t
+        posterior_mean = (
+            extract_into_tensor(self.posterior_mean_coef1, t, x_t.shape) * x_start
+            + extract_into_tensor(self.posterior_mean_coef2, t, x_t.shape) * x_t
+        )
         posterior_variance = extract_into_tensor(self.posterior_variance, t, x_t.shape)
         posterior_log_variance_clipped = extract_into_tensor(self.posterior_log_variance_clipped, t, x_t.shape)
         return posterior_mean, posterior_variance, posterior_log_variance_clipped
@@ -201,7 +220,9 @@ class DDPM(base.BaseLightningModule):
         img = torch.randn(shape, device=device)
         intermediates = [img]
         for i in tqdm(reversed(range(self.num_timesteps)), desc="Sampling t", total=self.num_timesteps):
-            img = self.p_sample(img, torch.full((b,), i, device=device, dtype=torch.long), batch, clip_denoised=self.clip_denoised, clamp=clamp)
+            img = self.p_sample(
+                img, torch.full((b,), i, device=device, dtype=torch.long), batch, clip_denoised=self.clip_denoised, clamp=clamp
+            )
             if i % self.log_every_t == 0 or i == self.num_timesteps - 1:
                 intermediates.append(img)
         if return_intermediates:
@@ -209,7 +230,17 @@ class DDPM(base.BaseLightningModule):
         return img
 
     @torch.no_grad()
-    def sample(self, batch, batch_size=16, return_intermediates=False, ddim=False, ddim_steps=100, shape=None, clamp: Callable | None = None, **kwargs):
+    def sample(
+        self,
+        batch,
+        batch_size=16,
+        return_intermediates=False,
+        ddim=False,
+        ddim_steps=100,
+        shape=None,
+        clamp: Callable | None = None,
+        **kwargs,
+    ):
         if self.clamp is not None and clamp is None:
             a, b = self.clamp
             clamp = partial(torch.clamp, min=a, max=b)
@@ -227,7 +258,8 @@ class DDPM(base.BaseLightningModule):
     def q_sample(self, x_start, t, noise=None):
         noise = default(noise, lambda: torch.randn_like(x_start))
         return (
-            extract_into_tensor(self.sqrt_alphas_cumprod, t, x_start.shape) * x_start + extract_into_tensor(self.sqrt_one_minus_alphas_cumprod, t, x_start.shape) * noise
+            extract_into_tensor(self.sqrt_alphas_cumprod, t, x_start.shape) * x_start
+            + extract_into_tensor(self.sqrt_one_minus_alphas_cumprod, t, x_start.shape) * noise
         )
 
     @torch.no_grad()

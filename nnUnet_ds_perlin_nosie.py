@@ -36,7 +36,9 @@ def rand_perlin_3d(shape, res, fade=lambda t: 6 * t**5 - 15 * t**4 + 10 * t**3):
 
     grid = (
         torch.stack(
-            torch.meshgrid(torch.arange(0, res[0], delta[0]), torch.arange(0, res[1], delta[1]), torch.arange(0, res[2], delta[2]), indexing="ij"),
+            torch.meshgrid(
+                torch.arange(0, res[0], delta[0]), torch.arange(0, res[1], delta[1]), torch.arange(0, res[2], delta[2]), indexing="ij"
+            ),
             dim=-1,
         )
         % 1

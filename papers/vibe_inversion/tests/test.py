@@ -292,7 +292,15 @@ def pipeline_bids(
         log.on_save("rename", old_name, "->", out_detection_fat)
         old_name.rename(out_detection_fat)
     args["info"]["mod"] = None
-    return (total_vibe, out_reconstruction_water, out_reconstruction_fat, out_reconstruction_r2s, out_reconstruction_pdwf, out_reconstruction_pdff, out_signal_prior)
+    return (
+        total_vibe,
+        out_reconstruction_water,
+        out_reconstruction_fat,
+        out_reconstruction_r2s,
+        out_reconstruction_pdwf,
+        out_reconstruction_pdff,
+        out_signal_prior,
+    )
 
 
 if __name__ == "__main__":

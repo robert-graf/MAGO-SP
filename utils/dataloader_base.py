@@ -111,11 +111,19 @@ class DataModuleFromConfig(pl.LightningDataModule):
     def _train_dataloader(self):
         is_iterable_dataset = isinstance(self.datasets["train"], BaseDataset)
         init_fn = worker_init_fn if is_iterable_dataset or self.use_worker_init_fn else None
-        return DataLoader(self.datasets["train"], batch_size=self.batch_size, num_workers=self.num_workers, shuffle=not is_iterable_dataset, worker_init_fn=init_fn)
+        return DataLoader(
+            self.datasets["train"],
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
+            shuffle=not is_iterable_dataset,
+            worker_init_fn=init_fn,
+        )
 
     def _val_dataloader(self, shuffle=False):
         init_fn = worker_init_fn if isinstance(self.datasets["validation"], BaseDataset) or self.use_worker_init_fn else None
-        return DataLoader(self.datasets["validation"], batch_size=self.batch_size, num_workers=self.num_workers, worker_init_fn=init_fn, shuffle=shuffle)
+        return DataLoader(
+            self.datasets["validation"], batch_size=self.batch_size, num_workers=self.num_workers, worker_init_fn=init_fn, shuffle=shuffle
+        )
 
     def _test_dataloader(self, shuffle=False):
         is_iterable_dataset = isinstance(self.datasets["train"], BaseDataset)
@@ -124,7 +132,9 @@ class DataModuleFromConfig(pl.LightningDataModule):
         # do not shuffle dataloader for iterable dataset
         shuffle = shuffle and (not is_iterable_dataset)
 
-        return DataLoader(self.datasets["test"], batch_size=self.batch_size, num_workers=self.num_workers, worker_init_fn=init_fn, shuffle=shuffle)
+        return DataLoader(
+            self.datasets["test"], batch_size=self.batch_size, num_workers=self.num_workers, worker_init_fn=init_fn, shuffle=shuffle
+        )
 
     def _predict_dataloader(self, _shuffle=False):
         init_fn = worker_init_fn if isinstance(self.datasets["predict"], BaseDataset) or self.use_worker_init_fn else None

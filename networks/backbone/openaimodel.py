@@ -1,24 +1,36 @@
-from abc import abstractmethod
 import math
+from abc import abstractmethod
 
 import numpy as np
+import torch
 import torch.nn.functional as F
 from torch import nn
-import torch
-from networks.backbone.substructures.attention import SpatialTransformer,AttentionPool2d
-from networks.backbone.substructures.nd_layers import avg_pool_nd, checkpoint, conv_nd, linear, normalization, timestep_embedding, zero_module
+
+from networks.backbone.substructures.attention import AttentionPool2d, SpatialTransformer
+from networks.backbone.substructures.nd_layers import (
+    avg_pool_nd,
+    checkpoint,
+    conv_nd,
+    linear,
+    normalization,
+    timestep_embedding,
+    zero_module,
+)
 
 ## go
+
 
 class TimestepBlock(nn.Module):
     """
     Any module where forward() takes timestep embeddings as a second argument.
     """
+
     @abstractmethod
     def forward(self, x, emb):
         """
         Apply the module to `x` given `emb` timestep embeddings.
         """
+
 
 class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
     """
@@ -57,7 +69,11 @@ class Upsample(nn.Module):
 
     def forward(self, x):
         assert x.shape[1] == self.channels
-        x = F.interpolate(x, (x.shape[2], x.shape[3] * 2, x.shape[4] * 2), mode="nearest") if self.dims == 3 else F.interpolate(x, scale_factor=2, mode="nearest")
+        x = (
+            F.interpolate(x, (x.shape[2], x.shape[3] * 2, x.shape[4] * 2), mode="nearest")
+            if self.dims == 3
+            else F.interpolate(x, scale_factor=2, mode="nearest")
+        )
         if self.use_conv:
             x = self.conv(x)
         return x
@@ -242,11 +258,13 @@ class AttentionBlock(nn.Module):
             self.attention = QKVAttention(self.num_heads)
         else:
             raise NotImplementedError("QKVAttentionLegacy")
-            
+
         self.proj_out = zero_module(conv_nd(1, channels, channels, 1))
 
     def forward(self, x):
-        return checkpoint(self._forward, (x,), self.parameters(), True)  # TODO: check checkpoint usage, is True # TODO: fix the .half call!!!
+        return checkpoint(
+            self._forward, (x,), self.parameters(), True
+        )  # TODO: check checkpoint usage, is True # TODO: fix the .half call!!!
         # return pt_checkpoint(self._forward, x)  # pytorch
 
     def _forward(self, x):
@@ -276,7 +294,6 @@ def count_flops_attn(model, _x, y):
     # the combination of the value vectors.
     matmul_ops = 2 * b * (num_spatial**2) * c
     model.total_ops += torch.DoubleTensor([matmul_ops])
-
 
 
 class QKVAttention(nn.Module):
@@ -428,7 +445,15 @@ class UNetModel(nn.Module):
         for level, mult in enumerate(channel_mult):
             for _ in range(num_res_blocks):
                 layers = [
-                    ResBlock(ch, time_embed_dim, dropout, out_channels=mult * model_channels, dims=dims, use_checkpoint=use_checkpoint, use_scale_shift_norm=use_scale_shift_norm)
+                    ResBlock(
+                        ch,
+                        time_embed_dim,
+                        dropout,
+                        out_channels=mult * model_channels,
+                        dims=dims,
+                        use_checkpoint=use_checkpoint,
+                        use_scale_shift_norm=use_scale_shift_norm,
+                    )
                 ]
                 ch = mult * model_channels
                 if ds in attention_resolutions:
@@ -441,7 +466,13 @@ class UNetModel(nn.Module):
                         # num_heads = 1
                         dim_head = ch // num_heads if use_spatial_transformer else num_head_channels
                     layers.append(
-                        AttentionBlock(ch, use_checkpoint=use_checkpoint, num_heads=num_heads, num_head_channels=dim_head, use_new_attention_order=use_new_attention_order)
+                        AttentionBlock(
+                            ch,
+                            use_checkpoint=use_checkpoint,
+                            num_heads=num_heads,
+                            num_head_channels=dim_head,
+                            use_new_attention_order=use_new_attention_order,
+                        )
                         if not use_spatial_transformer
                         else SpatialTransformer(ch, num_heads, dim_head, depth=transformer_depth, context_dim=context_dim)  # type: ignore
                     )
@@ -452,7 +483,16 @@ class UNetModel(nn.Module):
                 out_ch = ch
                 self.input_blocks.append(
                     TimestepEmbedSequential(
-                        ResBlock(ch, time_embed_dim, dropout, out_channels=out_ch, dims=dims, use_checkpoint=use_checkpoint, use_scale_shift_norm=use_scale_shift_norm, down=True)
+                        ResBlock(
+                            ch,
+                            time_embed_dim,
+                            dropout,
+                            out_channels=out_ch,
+                            dims=dims,
+                            use_checkpoint=use_checkpoint,
+                            use_scale_shift_norm=use_scale_shift_norm,
+                            down=True,
+                        )
                         if resblock_updown
                         else Downsample(ch, conv_resample, dims=dims, out_channels=out_ch)
                     )
@@ -472,7 +512,13 @@ class UNetModel(nn.Module):
             dim_head = ch // num_heads if use_spatial_transformer else num_head_channels
         self.middle_block = TimestepEmbedSequential(
             ResBlock(ch, time_embed_dim, dropout, dims=dims, use_checkpoint=use_checkpoint, use_scale_shift_norm=use_scale_shift_norm),
-            AttentionBlock(ch, use_checkpoint=use_checkpoint, num_heads=num_heads, num_head_channels=dim_head, use_new_attention_order=use_new_attention_order)
+            AttentionBlock(
+                ch,
+                use_checkpoint=use_checkpoint,
+                num_heads=num_heads,
+                num_head_channels=dim_head,
+                use_new_attention_order=use_new_attention_order,
+            )
             if not use_spatial_transformer
             else SpatialTransformer(ch, num_heads, dim_head, depth=transformer_depth, context_dim=context_dim),
             ResBlock(ch, time_embed_dim, dropout, dims=dims, use_checkpoint=use_checkpoint, use_scale_shift_norm=use_scale_shift_norm),
@@ -485,7 +531,13 @@ class UNetModel(nn.Module):
                 ich = input_block_chans.pop()
                 layers = [
                     ResBlock(
-                        ch + ich, time_embed_dim, dropout, out_channels=model_channels * mult, dims=dims, use_checkpoint=use_checkpoint, use_scale_shift_norm=use_scale_shift_norm
+                        ch + ich,
+                        time_embed_dim,
+                        dropout,
+                        out_channels=model_channels * mult,
+                        dims=dims,
+                        use_checkpoint=use_checkpoint,
+                        use_scale_shift_norm=use_scale_shift_norm,
                     )
                 ]
                 ch = model_channels * mult
@@ -499,14 +551,29 @@ class UNetModel(nn.Module):
                         # num_heads = 1
                         dim_head = ch // num_heads if use_spatial_transformer else num_head_channels
                     layers.append(
-                        AttentionBlock(ch, use_checkpoint=use_checkpoint, num_heads=num_heads_upsample, num_head_channels=dim_head, use_new_attention_order=use_new_attention_order)
+                        AttentionBlock(
+                            ch,
+                            use_checkpoint=use_checkpoint,
+                            num_heads=num_heads_upsample,
+                            num_head_channels=dim_head,
+                            use_new_attention_order=use_new_attention_order,
+                        )
                         if not use_spatial_transformer
                         else SpatialTransformer(ch, num_heads, dim_head, depth=transformer_depth, context_dim=context_dim)  # type: ignore
                     )
                 if level and i == num_res_blocks:
                     out_ch = ch
                     layers.append(
-                        ResBlock(ch, time_embed_dim, dropout, out_channels=out_ch, dims=dims, use_checkpoint=use_checkpoint, use_scale_shift_norm=use_scale_shift_norm, up=True)
+                        ResBlock(
+                            ch,
+                            time_embed_dim,
+                            dropout,
+                            out_channels=out_ch,
+                            dims=dims,
+                            use_checkpoint=use_checkpoint,
+                            use_scale_shift_norm=use_scale_shift_norm,
+                            up=True,
+                        )
                         if resblock_updown
                         else Upsample(ch, conv_resample, dims=dims, out_channels=out_ch)  # type: ignore
                     )
@@ -537,7 +604,7 @@ class UNetModel(nn.Module):
 
     def convert_to_fp32(self):
         raise NotImplementedError()
-        
+
         """
         Convert the torso of the model to float32.
         """
@@ -645,12 +712,26 @@ class EncoderUNetModel(nn.Module):
         for level, mult in enumerate(channel_mult):
             for _ in range(num_res_blocks):
                 layers = [
-                    ResBlock(ch, time_embed_dim, dropout, out_channels=mult * model_channels, dims=dims, use_checkpoint=use_checkpoint, use_scale_shift_norm=use_scale_shift_norm)
+                    ResBlock(
+                        ch,
+                        time_embed_dim,
+                        dropout,
+                        out_channels=mult * model_channels,
+                        dims=dims,
+                        use_checkpoint=use_checkpoint,
+                        use_scale_shift_norm=use_scale_shift_norm,
+                    )
                 ]
                 ch = mult * model_channels
                 if ds in attention_resolutions:
                     layers.append(
-                        AttentionBlock(ch, use_checkpoint=use_checkpoint, num_heads=num_heads, num_head_channels=num_head_channels, use_new_attention_order=use_new_attention_order)  # type: ignore
+                        AttentionBlock(
+                            ch,
+                            use_checkpoint=use_checkpoint,
+                            num_heads=num_heads,
+                            num_head_channels=num_head_channels,
+                            use_new_attention_order=use_new_attention_order,
+                        )  # type: ignore
                     )
                 self.input_blocks.append(TimestepEmbedSequential(*layers))
                 self._feature_size += ch
@@ -659,7 +740,16 @@ class EncoderUNetModel(nn.Module):
                 out_ch = ch
                 self.input_blocks.append(
                     TimestepEmbedSequential(
-                        ResBlock(ch, time_embed_dim, dropout, out_channels=out_ch, dims=dims, use_checkpoint=use_checkpoint, use_scale_shift_norm=use_scale_shift_norm, down=True)
+                        ResBlock(
+                            ch,
+                            time_embed_dim,
+                            dropout,
+                            out_channels=out_ch,
+                            dims=dims,
+                            use_checkpoint=use_checkpoint,
+                            use_scale_shift_norm=use_scale_shift_norm,
+                            down=True,
+                        )
                         if resblock_updown
                         else Downsample(ch, conv_resample, dims=dims, out_channels=out_ch)
                     )
@@ -671,7 +761,13 @@ class EncoderUNetModel(nn.Module):
 
         self.middle_block = TimestepEmbedSequential(
             ResBlock(ch, time_embed_dim, dropout, dims=dims, use_checkpoint=use_checkpoint, use_scale_shift_norm=use_scale_shift_norm),
-            AttentionBlock(ch, use_checkpoint=use_checkpoint, num_heads=num_heads, num_head_channels=num_head_channels, use_new_attention_order=use_new_attention_order),
+            AttentionBlock(
+                ch,
+                use_checkpoint=use_checkpoint,
+                num_heads=num_heads,
+                num_head_channels=num_head_channels,
+                use_new_attention_order=use_new_attention_order,
+            ),
             ResBlock(ch, time_embed_dim, dropout, dims=dims, use_checkpoint=use_checkpoint, use_scale_shift_norm=use_scale_shift_norm),
         )
         self._feature_size += ch

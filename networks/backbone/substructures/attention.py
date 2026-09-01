@@ -1,12 +1,5 @@
-from torch import nn
+import math
 import os
-import math
-import torch
-import torch.nn as nn
-from einops import repeat
-
-from networks.backbone.substructures.nd_layers import checkpoint, conv_nd
-import math
 from inspect import isfunction
 from typing import Any, TypeVar
 
@@ -15,7 +8,7 @@ import torch.nn.functional as F
 from einops import rearrange, repeat
 from torch import einsum, nn
 
-
+from networks.backbone.substructures.nd_layers import checkpoint, conv_nd
 
 T = TypeVar("T")
 try:
@@ -37,7 +30,7 @@ def exists(val):
 
 
 def uniq(arr):
-    return {el: True for el in arr}.keys()
+    return dict.fromkeys(arr, True).keys()
 
 
 def default(val: T | None, d: T) -> T:
@@ -203,7 +196,7 @@ class MemoryEfficientCrossAttention(nn.Module):
     # https://github.com/MatthieuTPHR/diffusers/blob/d80b531ff8060ec1ea982b65a1b8df70f73aa67c/src/diffusers/models/attention.py#L223
     def __init__(self, query_dim, context_dim=None, heads=8, dim_head=64, dropout=0.0):
         super().__init__()
-        print(f"Setting up {self.__class__.__name__}. Query dim is {query_dim}, context_dim is {context_dim} and using " f"{heads} heads.")
+        print(f"Setting up {self.__class__.__name__}. Query dim is {query_dim}, context_dim is {context_dim} and using {heads} heads.")
         inner_dim = dim_head * heads
         context_dim = default(context_dim, query_dim)
 
@@ -225,7 +218,12 @@ class MemoryEfficientCrossAttention(nn.Module):
 
         b, _, _ = q.shape
         q, k, v = (
-            t.unsqueeze(3).reshape(b, t.shape[1], self.heads, self.dim_head).permute(0, 2, 1, 3).reshape(b * self.heads, t.shape[1], self.dim_head).contiguous() for t in (q, k, v)
+            t.unsqueeze(3)
+            .reshape(b, t.shape[1], self.heads, self.dim_head)
+            .permute(0, 2, 1, 3)
+            .reshape(b * self.heads, t.shape[1], self.dim_head)
+            .contiguous()
+            for t in (q, k, v)
         )
 
         # actually compute the attention, what we cannot get enough of
@@ -233,7 +231,12 @@ class MemoryEfficientCrossAttention(nn.Module):
 
         if exists(mask):
             raise NotImplementedError
-        out = out.unsqueeze(0).reshape(b, self.heads, out.shape[1], self.dim_head).permute(0, 2, 1, 3).reshape(b, out.shape[1], self.heads * self.dim_head)
+        out = (
+            out.unsqueeze(0)
+            .reshape(b, self.heads, out.shape[1], self.dim_head)
+            .permute(0, 2, 1, 3)
+            .reshape(b, out.shape[1], self.heads * self.dim_head)
+        )
         return self.to_out(out)
 
 
@@ -253,7 +256,9 @@ class BasicTransformerBlock(nn.Module):
             query_dim=dim, heads=n_heads, dim_head=d_head, dropout=dropout, context_dim=context_dim if self.disable_self_attn else None
         )  # is a self-attention if not self.disable_self_attn
         self.ff = FeedForward(dim, dropout=dropout, glu=gated_ff)
-        self.attn2 = attn_cls(query_dim=dim, context_dim=context_dim, heads=n_heads, dim_head=d_head, dropout=dropout)  # is self-attn if context is none
+        self.attn2 = attn_cls(
+            query_dim=dim, context_dim=context_dim, heads=n_heads, dim_head=d_head, dropout=dropout
+        )  # is self-attn if context is none
         self.norm1 = nn.LayerNorm(dim)
         self.norm2 = nn.LayerNorm(dim)
         self.norm3 = nn.LayerNorm(dim)
@@ -279,7 +284,18 @@ class SpatialTransformer(nn.Module):
     NEW: use_linear for more efficiency instead of the 1x1 convs
     """
 
-    def __init__(self, in_channels, n_heads, d_head, depth=1, dropout=0.0, context_dim=None, disable_self_attn=False, use_linear=False, use_checkpoint=True):
+    def __init__(
+        self,
+        in_channels,
+        n_heads,
+        d_head,
+        depth=1,
+        dropout=0.0,
+        context_dim=None,
+        disable_self_attn=False,
+        use_linear=False,
+        use_checkpoint=True,
+    ):
         super().__init__()
         if exists(context_dim) and not isinstance(context_dim, list):
             context_dim = [context_dim]
@@ -293,7 +309,15 @@ class SpatialTransformer(nn.Module):
 
         self.transformer_blocks = nn.ModuleList(
             [
-                BasicTransformerBlock(inner_dim, n_heads, d_head, dropout=dropout, context_dim=context_dim[d], disable_self_attn=disable_self_attn, checkpoint=use_checkpoint)
+                BasicTransformerBlock(
+                    inner_dim,
+                    n_heads,
+                    d_head,
+                    dropout=dropout,
+                    context_dim=context_dim[d],
+                    disable_self_attn=disable_self_attn,
+                    checkpoint=use_checkpoint,
+                )
                 for d in range(depth)
             ]
         )
@@ -324,6 +348,7 @@ class SpatialTransformer(nn.Module):
             x = self.proj_out(x)
         return x + x_in
 
+
 class AttentionPool2d(nn.Module):
     """
     Adapted from CLIP: https://github.com/openai/CLIP/blob/main/clip/model.py
@@ -352,4 +377,3 @@ class AttentionPool2d(nn.Module):
         x = self.attention(x)
         x = self.c_proj(x)
         return x[:, :, 0]
-

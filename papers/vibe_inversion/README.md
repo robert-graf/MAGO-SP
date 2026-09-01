@@ -50,18 +50,29 @@ from mago_methods import (
 ### Water fat swap detection
 
 ```python
-from pipeline import detect_inversion_seg,make_swap_statistic_single
+from pipeline import detect_inversion_seg, make_swap_statistic_single
+
 # Paths
 name = "example_subject"
 out_phase = "PATH to out-phase"
-in_phase =  "PATH to in-phase"
+in_phase = "PATH to in-phase"
 water_image = "Path to water image (not the PDWF)"
 fat_image = "Path to fat image (not the PDFF)"
 # Compute detection
-water_detection, fat_detection = detect_inversion_seg(out_phase, in_phase, water_image, fat_image, out_detection_water="water_msk.nii.gz", out_detection_fat="fat_msk.nii.gz", override=False, ddevice="cuda", gpu=0)
+water_detection, fat_detection = detect_inversion_seg(
+    out_phase,
+    in_phase,
+    water_image,
+    fat_image,
+    out_detection_water="water_msk.nii.gz",
+    out_detection_fat="fat_msk.nii.gz",
+    override=False,
+    ddevice="cuda",
+    gpu=0,
+)
 swap_static = make_swap_statistic_single(name, water_detection, fat_detection, total_vibe=None)
 
-print(f"{swap_static.percent*100:.2f} % of the image is swapped")    
+print(f"{swap_static.percent * 100:.2f} % of the image is swapped")
 ```
 
 ```python
@@ -106,9 +117,9 @@ def predict_signal_prior(
 ## Full Pipeline
 
 ```python
-from pipeline import pipeline_bids,pipeline
+from pipeline import pipeline_bids, pipeline
 
-#pipeline_bids automatic generates BIDS names, if the input name is BIDS compliant.
+# pipeline_bids automatic generates BIDS names, if the input name is BIDS compliant.
 
 # Note:
 #    ti_ms and s_magnitude must be in the same order.
@@ -179,5 +190,4 @@ from pipeline import pipeline_bids,pipeline
         - For VIBE, `s_magnitude` typically includes outphase and inphase images.
         - This function attempts to minimize manual intervention through automated correction.
     """
-
 ```

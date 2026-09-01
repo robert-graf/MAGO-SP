@@ -142,12 +142,23 @@ def get_opt(**parser_kwargs):
     parser.add_argument("-v", "--verbose", default=False, action="store_true", help="Enable verbose logging")
     # parser.add_argument("--scale_lr", type=str2bool, nargs="?", const=True, default=True, help="scale base-lr by n_gpu * batch_size * n_accumulate")
     p = parser.parse_args()
-    return MainOpt(config=p.config, seed=p.seed, logdir_name=p.logdir_name, name=p.name, gpus=p.gpus, resume=p.resume, verbose=p.verbose, accelerator=p.accelerator)  # type: ignore
+    return MainOpt(
+        config=p.config,
+        seed=p.seed,
+        logdir_name=p.logdir_name,
+        name=p.name,
+        gpus=p.gpus,
+        resume=p.resume,
+        verbose=p.verbose,
+        accelerator=p.accelerator,
+    )  # type: ignore
 
 
 def add_default_config(config, opt: MainOpt, model):
     lightning_config = config.pop("lightning", OmegaConf.create())
-    trainer_config = lightning_config.get("trainer", OmegaConf.create()) if "trainer" in lightning_config else config.get("trainer", OmegaConf.create())
+    trainer_config = (
+        lightning_config.get("trainer", OmegaConf.create()) if "trainer" in lightning_config else config.get("trainer", OmegaConf.create())
+    )
     trainer_config = {**trainer_config}
     if opt.gpus is None:
         opt.gpus = []

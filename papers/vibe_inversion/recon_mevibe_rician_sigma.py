@@ -25,7 +25,9 @@ def loss_function(params, s_magnitude, ti, alpha_p, freqs_hz, rician_loss=True):
     return -RicianLogLik(s_magnitude, model_signal, sigma=sigma)
 
 
-def optimize_voxel_magnitude(s_magnitude: np.ndarray, ti: np.ndarray, r2, initial_guess: tuple[float, float], alpha_p, freqs_hz, rician_loss=True, sigma=2):
+def optimize_voxel_magnitude(
+    s_magnitude: np.ndarray, ti: np.ndarray, r2, initial_guess: tuple[float, float], alpha_p, freqs_hz, rician_loss=True, sigma=2
+):
     """
     Optimize p_w, p_f, and R2* for a given voxel using least squares minimization.
 
@@ -64,7 +66,11 @@ def optimize_voxel_magnitude(s_magnitude: np.ndarray, ti: np.ndarray, r2, initia
         guess = [max(min(g, 1000.0), 0.0) for g in guess]
         try:
             res = least_squares(
-                loss_function, guess, args=(s_magnitude, ti, alpha_p, freqs_hz, rician_loss), bounds=((0, 0, 0, -10), (1000, 1000, 1000, 100000000)), method="dogbox"
+                loss_function,
+                guess,
+                args=(s_magnitude, ti, alpha_p, freqs_hz, rician_loss),
+                bounds=((0, 0, 0, -10), (1000, 1000, 1000, 100000000)),
+                method="dogbox",
             )
         except Exception:
             # print(f"({guess=}, {s_magnitude=}, {ti=}, {r2=}, {freqs_hz=})")
@@ -83,12 +89,16 @@ def _process_voxel(idx, s_magnitude, ti, alpha_p, freqs_hz, rician_loss=True, si
     if np.prod(s_magnitude) < 0:
         return -1
     initial_guess = (0.0, 1000.0)
-    p_w, p_f, r2s, sigma = optimize_voxel_magnitude(s_magnitude, ti, 100, initial_guess, alpha_p, freqs_hz, rician_loss=rician_loss, sigma=sigma)
+    p_w, p_f, r2s, sigma = optimize_voxel_magnitude(
+        s_magnitude, ti, 100, initial_guess, alpha_p, freqs_hz, rician_loss=rician_loss, sigma=sigma
+    )
     loss = rss(p_w, p_f, s_magnitude, ti, r2s, alpha_p, freqs_hz)
 
     # Try second initial guess
     initial_guess2 = (1000.0, 0.0)
-    p_w2, p_f2, r2s2, sigma2 = optimize_voxel_magnitude(s_magnitude, ti, 100, initial_guess2, alpha_p, freqs_hz, rician_loss=rician_loss, sigma=sigma)
+    p_w2, p_f2, r2s2, sigma2 = optimize_voxel_magnitude(
+        s_magnitude, ti, 100, initial_guess2, alpha_p, freqs_hz, rician_loss=rician_loss, sigma=sigma
+    )
     loss2 = rss(p_w2, p_f2, s_magnitude, ti, r2s2, alpha_p, freqs_hz)
     return sigma if loss < loss2 else sigma2  # abs(p_w), abs(p_f), abs(p_w2), abs(p_f2), loss, loss2, r2s, r2s2, idx
 
@@ -131,7 +141,8 @@ def estimate_rician_sigma(
     freqs_hz = get_freqs_hz(freqs_ppm, MagneticFieldStrength)
     with tqdm_joblib(tqdm(desc="Processing voxels sigmar", total=len(selected_indices))):
         results = Parallel(n_jobs=max(os.cpu_count() - 1, 1))(
-            delayed(_process_voxel)(idx, np.array([i[idx] for i in s_magnitude_arr]), ti, alpha_p, freqs_hz, rician_loss, 2) for idx in selected_indices
+            delayed(_process_voxel)(idx, np.array([i[idx] for i in s_magnitude_arr]), ti, alpha_p, freqs_hz, rician_loss, 2)
+            for idx in selected_indices
         )
     out_l = []
     for sigma_ in results:

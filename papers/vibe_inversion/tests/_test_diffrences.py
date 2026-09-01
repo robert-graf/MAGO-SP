@@ -1,9 +1,9 @@
 import numpy as np
 from TPTBox import NII, to_nii
 
-recon = to_nii("/media/data/NAKO/dataset-nako/derivatives_inversion/100/100073/mevibe/sub-100073_sequ-59_acq-ax_part-water_desc-reconstructed_mevibe.nii.gz").set_dtype_(
-    float
-)
+recon = to_nii(
+    "/media/data/NAKO/dataset-nako/derivatives_inversion/100/100073/mevibe/sub-100073_sequ-59_acq-ax_part-water_desc-reconstructed_mevibe.nii.gz"
+).set_dtype_(float)
 org = to_nii("/media/data/NAKO/dataset-nako/rawdata/100/100073/mevibe/sub-100073_sequ-59_acq-ax_part-water_mevibe.nii.gz").set_dtype_(float)
 
 (recon - org).save("/media/data/NAKO/dataset-nako/derivatives_inversion/100/100073/mevibe/diff.nii.gz")
@@ -29,9 +29,9 @@ dif = compute_patch_averages(recon - org, 4)
 dif.save("/media/data/NAKO/dataset-nako/derivatives_inversion/100/100073/mevibe/diff2.nii.gz")
 
 
-recon = to_nii("/media/data/NAKO/dataset-nako/derivatives_inversion/100/100073/mevibe/sub-100073_sequ-59_acq-ax_part-fat_desc-reconstructed_mevibe.nii.gz").set_dtype_(
-    float
-)
+recon = to_nii(
+    "/media/data/NAKO/dataset-nako/derivatives_inversion/100/100073/mevibe/sub-100073_sequ-59_acq-ax_part-fat_desc-reconstructed_mevibe.nii.gz"
+).set_dtype_(float)
 org = to_nii("/media/data/NAKO/dataset-nako/rawdata/100/100073/mevibe/sub-100073_sequ-60_acq-ax_part-fat_mevibe.nii.gz").set_dtype_(float)
 
 (recon - org).save("/media/data/NAKO/dataset-nako/derivatives_inversion/100/100073/mevibe/diff3.nii.gz")
