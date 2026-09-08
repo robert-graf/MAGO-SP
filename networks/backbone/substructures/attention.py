@@ -8,7 +8,6 @@ import torch.nn.functional as F
 from einops import rearrange, repeat
 from torch import einsum, nn
 
-from networks.backbone.openaimodel import QKVAttention
 from networks.backbone.substructures.nd_layers import checkpoint, conv_nd
 
 T = TypeVar("T")
@@ -366,6 +365,8 @@ class AttentionPool2d(nn.Module):
         self.qkv_proj = conv_nd(1, embed_dim, 3 * embed_dim, 1)
         self.c_proj = conv_nd(1, embed_dim, output_dim or embed_dim, 1)
         self.num_heads = embed_dim // num_heads_channels
+        from networks.backbone.openaimodel import QKVAttention  # lazy: breaks openaimodel<->attention import cycle
+
         self.attention = QKVAttention(self.num_heads)
 
     def forward(self, x):

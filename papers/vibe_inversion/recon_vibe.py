@@ -76,7 +76,8 @@ def vibe_separate_water_fat_from_guess(water: NII, fat: NII, water_guess: NII):
     """
     w = water_guess.copy().set_dtype_(float)
 
-    msk = abs(water - w) < abs(fat - w)
+    # Cast to uint8 so `1 - msk` doesn't hit numpy's ban on unary-minus for bool.
+    msk = (abs(water - w) < abs(fat - w)).set_dtype_(np.uint8)
     w_pred = water * msk + fat * (1 - msk)
     f_pred = fat * msk + water * (1 - msk)
     return w_pred, f_pred
