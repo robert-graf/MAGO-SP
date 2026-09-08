@@ -539,7 +539,7 @@ def main() -> None:
     args = ap.parse_args()
 
     OUT_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
-    OUT_TEMP_DIR.mkdir(parents=True, exist_ok=True)[]
+    OUT_TEMP_DIR.mkdir(parents=True, exist_ok=True)
     log = Print_Logger()
 
     corrected = 0
