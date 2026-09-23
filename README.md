@@ -211,18 +211,18 @@ pipeline_bids(
 ```
 
 - Both arrays must have the same length; `alpha_p` typically sums to ~1.
-- The active default set in `recon_mevibe.py` is now **Zhong 7-peak** (liver). The **MAGO-SP paper** results were produced with **Ren marrow (9-peak)** — that set is still in the file, just as a commented alternate. Bring your own for liver, subcutaneous fat, brown adipose, phantom, or scanner-specific calibrations.
+- The active default set in `recon_mevibe.py` is now **Hamilton 9-peak** (liver). The **MAGO-SP paper** results were produced with **Ren marrow (9-peak)** — that set is still in the file, just as a commented alternate. Bring your own for liver, subcutaneous fat, brown adipose, phantom, or scanner-specific calibrations.
 
 These are some examples for Water-Fat-Models we where using. Pick one that matches your tissue of interest, or drop in your own set. Each entry is either the active default in `papers/vibe_inversion/recon_mevibe.py` or a commented alternate in the same file / in `papers/vibe_inversion/notebook/estemate_rican_sigma.ipynb`.
 
 | Name | Peaks | Validated on | `freqs_ppm` | `alpha_p` | Source |
 |---|---|---|---|---|---|
 | **Ren marrow** (MAGO-SP paper default) | 9 | bone marrow & subcutaneous adipose tissue | `[-3.8, -3.4, -3.1, -2.68, -2.46, -1.95, -0.5, 0.49, 0.59]` | `[0.08991, 0.58342, 0.05994, 0.08492, 0.05994, 0.01499, 0.03996, 0.00999, 0.05694]` | Ren et al., *J Lipid Res* 2008 — <https://doi.org/10.1194/jlr.D700041-JLR200>; `+0.05 ppm` shift variant used in `tests/run_mevibe_test.py` — <https://doi.org/10.1002/jmri.25453> |
-| **Hamilton liver** | 9 | in vivo human liver | same 9 shifts as Ren | `[0.088, 0.642, 0.058, 0.062, 0.058, 0.006, 0.039, 0.01, 0.037]` | Hamilton et al., *NMR Biomed* 2011 — <https://doi.org/10.1002/nbm.1622> |
+| **Hamilton liver** (current default) | 9 | in vivo human liver | same 9 shifts as Ren | `[0.088, 0.642, 0.058, 0.062, 0.058, 0.006, 0.039, 0.01, 0.037]` | Hamilton et al., *NMR Biomed* 2011 — <https://doi.org/10.1002/nbm.1622> |
 | **Hernando** | 6 | in vivo human liver (R2* / iron overload) | `[-3.9, -3.5, -2.7, -2.04, -0.49, 0.50]` | `[0.087, 0.694, 0.128, 0.004, 0.039, 0.048]` | Hernando et al., *MRM* 2013 — <https://doi.org/10.1002/mrm.24593> |
 | **UKBB v1** | 6 | in vivo human liver (UK Biobank cohort) | `[5.20, 4.21, 2.66, 2.00, 1.20, 0.80]` | `[0.048, 0.039, 0.004, 0.128, 0.694, 0.087]` | MAGO — Triay Bagur et al., *MRM* 2019 — <https://doi.org/10.1002/mrm.27728> |
 | **UKBB v2** | 6 | in vivo human liver (UK Biobank cohort) | same 6 shifts as UKBB v1 | `[0.047, 0.039, 0.006, 0.12, 0.7, 0.088]` | MAGO — Triay Bagur et al., *MRM* 2019 — <https://doi.org/10.1002/mrm.27728> |
-| **Zhong 7-peak** (current default) | 7 | in vivo human liver (PDFF + R2*) | `[-3.73, -3.33, -3.04, -2.60, -2.38, -1.86, 0.68]` | `[0.08, 0.63, 0.07, 0.09, 0.07, 0.02, 0.04]` | Zhong et al., *MRM* 2014 — <https://doi.org/10.1002/mrm.25054> |
+| **Zhong 7-peak** | 7 | in vivo human liver (PDFF + R2*) | `[-3.73, -3.33, -3.04, -2.60, -2.38, -1.86, 0.68]` | `[0.08, 0.63, 0.07, 0.09, 0.07, 0.02, 0.04]` | Zhong et al., *MRM* 2014 — <https://doi.org/10.1002/mrm.25054> |
 
 > **Disclaimer:** Please check the paper yourself, to not miss details.
 
