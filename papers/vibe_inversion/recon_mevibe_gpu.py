@@ -27,8 +27,20 @@ Design:
 
 from __future__ import annotations
 
+import os
+
 import numpy as np
 import torch
+
+
+def _use_adam() -> bool:
+    """Optimizer selection. Default is Levenberg-Marquardt (see `_fit_batch_lm`)
+    — Adam with lr=0.5/n_iter=100 cannot cross the ~1000-magnitude gap between
+    the paper's `(0, 1000)` / `(1000, 0)` init and the true minimum on typical
+    scanner data (verified by `tests/test_cpu_vs_gpu.py`). Set env-var
+    `MAGOSP_FIT_METHOD=adam` to fall back to the old Adam path.
+    """
+    return os.environ.get("MAGOSP_FIT_METHOD", "lm").lower() == "adam"
 
 from papers.vibe_inversion.recon_mevibe import alpha_p as _DEFAULT_ALPHA_P
 from papers.vibe_inversion.recon_mevibe import freqs_ppm as _DEFAULT_FREQS_PPM
@@ -72,6 +84,107 @@ def _predict(theta: torch.Tensor, ti_row: torch.Tensor, fr_row: torch.Tensor, fi
     im = p_f * fi_row
     mag = torch.sqrt(re * re + im * im + 1e-12)
     return mag * torch.exp(-r2s * ti_row)
+
+
+def _pred_and_jac(theta: torch.Tensor, ti_row: torch.Tensor, fr_row: torch.Tensor, fi_row: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    """Analytic prediction + Jacobian (N, Necho, 3) w.r.t. `theta[:, 0..2]`.
+
+    model = mag * exp(-r2s * ti), with mag = sqrt(re² + im² + eps),
+            re = p_w + p_f * f_re, im = p_f * f_im.
+
+        ∂pred/∂p_w  = (re / mag) * exp(-r2s * ti)
+        ∂pred/∂p_f  = ((re * f_re + im * f_im) / mag) * exp(-r2s * ti)
+        ∂pred/∂r2s  = -ti * pred
+    """
+    p_w = theta[:, 0:1]
+    p_f = theta[:, 1:2]
+    r2s = theta[:, 2:3]
+    re = p_w + p_f * fr_row
+    im = p_f * fi_row
+    mag = torch.sqrt(re * re + im * im + 1e-12)
+    decay = torch.exp(-r2s * ti_row)
+    pred = mag * decay
+    inv_mag = 1.0 / mag
+    d_dpw = re * inv_mag * decay
+    d_dpf = (re * fr_row + im * fi_row) * inv_mag * decay
+    d_dr2s = -ti_row * pred
+    # (N, Necho, 3)
+    J = torch.stack([d_dpw, d_dpf, d_dr2s], dim=-1)
+    return pred, J
+
+
+def _fit_batch_lm(
+    s_target: torch.Tensor,
+    ti: torch.Tensor,
+    f_re: torch.Tensor,
+    f_im: torch.Tensor,
+    theta_init: torch.Tensor,
+    n_iter: int = 100,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Batched Levenberg-Marquardt fit — trust-region with per-voxel Marquardt damping.
+
+    For each voxel, one LM step is:
+        (JᵀJ + λ·diag(JᵀJ)) · δθ = -Jᵀr
+    The step is accepted where the SSR decreases; λ is halved on accept and
+    multiplied by 5 on reject. Non-negativity is enforced per parameter after
+    each step. Handles rare non-finite states by reverting to init.
+
+    Returns the fitted theta and per-voxel Gaussian SSR (used by the caller's
+    two-guess selector), matching `_fit_batch`'s output signature. Loss is
+    Gaussian regardless of `rician_loss` — Rician and Gaussian give the same
+    minimizer at moderate/high SNR, and LM converges directly to it (Adam
+    with lr=0.5/n_iter=100 could not, see recon_mevibe_gpu:96-99 note).
+    """
+    dev = theta_init.device
+    theta_init = torch.nan_to_num(theta_init, nan=0.0, posinf=0.0, neginf=0.0)
+    s_target = torch.nan_to_num(s_target, nan=0.0, posinf=0.0, neginf=0.0)
+    theta = theta_init.clone().detach()
+    ti_row = ti.unsqueeze(0)
+    fr_row = f_re.unsqueeze(0)
+    fi_row = f_im.unsqueeze(0)
+    lam = torch.full((theta.shape[0],), 1e-3, dtype=theta.dtype, device=dev)
+
+    with torch.no_grad():
+        pred = _predict(theta, ti_row, fr_row, fi_row)
+        loss = ((pred - s_target) ** 2).sum(dim=-1)
+
+    eye = torch.eye(3, dtype=theta.dtype, device=dev).unsqueeze(0)
+    for _ in range(n_iter):
+        with torch.no_grad():
+            pred, J = _pred_and_jac(theta, ti_row, fr_row, fi_row)
+            r = pred - s_target
+            JtJ = J.transpose(-2, -1) @ J
+            Jtr = (J.transpose(-2, -1) @ r.unsqueeze(-1)).squeeze(-1)
+            diag = JtJ.diagonal(dim1=-2, dim2=-1)
+            # Regularise the diagonal so background voxels (JᵀJ ≈ 0) don't
+            # blow up the batched solve. Marquardt damping alone can vanish
+            # when diag(JᵀJ) is zero — we use a small floor + eps·I.
+            diag_reg = diag.clamp(min=1e-6)
+            A = JtJ + lam.view(-1, 1, 1) * (diag_reg.unsqueeze(-1) * eye) + 1e-6 * eye
+            # `solve_ex` returns per-batch info; do NOT let one singular
+            # voxel abort the whole batch (the previous try/except zeroed
+            # dtheta for ALL voxels, which silently held every voxel at
+            # its init and made LM appear inactive).
+            sol, info = torch.linalg.solve_ex(A, -Jtr.unsqueeze(-1))
+            dtheta = sol.squeeze(-1)
+            bad_solve = info != 0
+            if bad_solve.any():
+                dtheta = torch.where(bad_solve.unsqueeze(-1), torch.zeros_like(dtheta), dtheta)
+            dtheta = torch.nan_to_num(dtheta, nan=0.0, posinf=0.0, neginf=0.0)
+            theta_new = (theta + dtheta).clamp(min=0.0)
+            pred_new = _predict(theta_new, ti_row, fr_row, fi_row)
+            loss_new = ((pred_new - s_target) ** 2).sum(dim=-1)
+            accept = (loss_new < loss) & torch.isfinite(loss_new)
+            theta = torch.where(accept.unsqueeze(-1), theta_new, theta)
+            loss = torch.where(accept, loss_new, loss)
+            lam = torch.where(accept, lam * 0.5, lam * 5.0).clamp(min=1e-9, max=1e10)
+
+    with torch.no_grad():
+        bad = ~torch.isfinite(theta).all(dim=-1, keepdim=True)
+        if bad.any():
+            theta = torch.where(bad.expand_as(theta), theta_init, theta)
+        loss = torch.where(torch.isfinite(loss), loss, torch.full_like(loss, float("inf")))
+    return theta.detach(), loss
 
 
 def _fit_batch(
@@ -192,7 +305,25 @@ def multipeak_fat_model_from_guess_torch(
     f0 = torch.as_tensor(fat_guess.astype(np.float32, copy=False).reshape(-1), device=dev)
     r0 = torch.full((n_vox,), 100.0, dtype=torch.float32, device=dev)
     theta_init = torch.stack([w0, f0, r0], dim=-1).contiguous()
-    theta, _ = _fit_batch(s_tensor, ti, f_re, f_im, theta_init, rician_loss, sigma, n_iter, lr)
+    if _use_adam():
+        theta, _ = _fit_batch(s_tensor, ti, f_re, f_im, theta_init, rician_loss, sigma, n_iter, lr)
+    else:
+        # Two-branch LM: fit from (w, f, R2*) AND from the swapped (f, w, R2*)
+        # in parallel, take the per-voxel branch with lower SSR. A prior can
+        # be scanner-swap-contaminated (DDIM occasionally hands us a swapped
+        # start when water/fat priors were built from raw scanner water/fat
+        # in a swapped region), and a single-start LM then converges to the
+        # wrong basin. The second (swapped) start lets the fit escape.
+        # `MAGOSP_FROM_GUESS_SINGLE_START=1` disables this and reverts to
+        # the plain from-guess behaviour.
+        if os.environ.get("MAGOSP_FROM_GUESS_SINGLE_START", "0") == "1":
+            theta, _ = _fit_batch_lm(s_tensor, ti, f_re, f_im, theta_init, n_iter=n_iter)
+        else:
+            theta_swap = torch.stack([f0, w0, r0], dim=-1).contiguous()
+            theta_a, loss_a = _fit_batch_lm(s_tensor, ti, f_re, f_im, theta_init, n_iter=n_iter)
+            theta_b, loss_b = _fit_batch_lm(s_tensor, ti, f_re, f_im, theta_swap, n_iter=n_iter)
+            pick_a = loss_a <= loss_b
+            theta = torch.where(pick_a.unsqueeze(-1), theta_a, theta_b)
     w = np.nan_to_num(theta[:, 0].cpu().numpy(), nan=0.0, posinf=0.0, neginf=0.0)
     f = np.nan_to_num(theta[:, 1].cpu().numpy(), nan=0.0, posinf=0.0, neginf=0.0)
     r = np.nan_to_num(theta[:, 2].cpu().numpy(), nan=0.0, posinf=0.0, neginf=0.0)
@@ -232,8 +363,12 @@ def multipeak_fat_model_smooth_torch(
     r2_init = 100.0
     theta_a = torch.tensor([[0.0, 1000.0, r2_init]], dtype=torch.float32, device=dev).expand(n_vox, 3).contiguous()
     theta_b = torch.tensor([[1000.0, 0.0, r2_init]], dtype=torch.float32, device=dev).expand(n_vox, 3).contiguous()
-    theta_a, l_a = _fit_batch(s_tensor, ti, f_re, f_im, theta_a, rician_loss, sigma_rician, n_iter, lr)
-    theta_b, l_b = _fit_batch(s_tensor, ti, f_re, f_im, theta_b, rician_loss, sigma_rician, n_iter, lr)
+    if _use_adam():
+        theta_a, l_a = _fit_batch(s_tensor, ti, f_re, f_im, theta_a, rician_loss, sigma_rician, n_iter, lr)
+        theta_b, l_b = _fit_batch(s_tensor, ti, f_re, f_im, theta_b, rician_loss, sigma_rician, n_iter, lr)
+    else:
+        theta_a, l_a = _fit_batch_lm(s_tensor, ti, f_re, f_im, theta_a, n_iter=n_iter)
+        theta_b, l_b = _fit_batch_lm(s_tensor, ti, f_re, f_im, theta_b, n_iter=n_iter)
     w_a = np.nan_to_num(theta_a[:, 0].cpu().numpy(), nan=0.0, posinf=0.0, neginf=0.0)
     f_a = np.nan_to_num(theta_a[:, 1].cpu().numpy(), nan=0.0, posinf=0.0, neginf=0.0)
     r_a = np.nan_to_num(theta_a[:, 2].cpu().numpy(), nan=0.0, posinf=0.0, neginf=0.0)

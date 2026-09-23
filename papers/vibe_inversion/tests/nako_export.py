@@ -5,10 +5,14 @@ Runs *after* nako_vibe.py / nako_mevibe.py — reuses their outputs in
 pass never re-runs anything that peak-model choice does not invalidate.
 
 VIBE
-    Iterate per chunk (not the stitched volume). For each chunk look at the
-    matching per-chunk detection produced by the earlier pass; skip chunks
-    whose swap counts stay below the correction thresholds. Only chunks
-    that actually need correction are reconstructed and emitted.
+    Iterate per chunk (not the stitched volume). Detection is always on the
+    native chunk grid — reuse the per-chunk detection from the earlier
+    nako_vibe pass when present, otherwise run nnUNet on the chunk here.
+    ROI + VibeSeg-100 for the swap statistic (arm exclusion,
+    affected_structures) are resampled from the whole-body stitched
+    segmentations onto the chunk grid, since those only exist stitched.
+    Skip chunks whose swap counts stay below the correction thresholds.
+    Only chunks that actually need correction are reconstructed and emitted.
 
 MEVIBE
     Reuse the existing detection masks AND the DL signal prior (peak-model
@@ -144,10 +148,11 @@ def _vibe_chunk_files(raw_dir: Path, sub: int | str, chunk: int) -> dict[str, Pa
     return files
 
 
-def _vibe_stitched_detection(deriv_inv_dir: Path, sub: int | str) -> tuple[Path, Path] | None:
-    """Preferred source of truth going forward: whole-body stitched detection."""
-    w = deriv_inv_dir / f"sub-{sub}_sequ-stitched_acq-ax_part-water_seg-fat-water-inversion-detection_msk.nii.gz"
-    f = deriv_inv_dir / f"sub-{sub}_sequ-stitched_acq-ax_part-fat_seg-fat-water-inversion-detection_msk.nii.gz"
+def _vibe_chunk_detection(deriv_inv_dir: Path, sub: int | str, chunk: int) -> tuple[Path, Path] | None:
+    """Per-chunk detection from the earlier nako_vibe pass — used directly when
+    present. Missing chunks are re-detected on the GPU in ``_vibe_finish``."""
+    w = deriv_inv_dir / f"sub-{sub}_acq-ax_chunk-{chunk}_part-water_seg-fat-water-inversion-detection_msk.nii.gz"
+    f = deriv_inv_dir / f"sub-{sub}_acq-ax_chunk-{chunk}_part-fat_seg-fat-water-inversion-detection_msk.nii.gz"
     return (w, f) if w.exists() and f.exists() else None
 
 
@@ -201,7 +206,7 @@ class VibePrep:
     raw_dir: Path
     outcome: str
     # Chunk-grid-resampled versions of the stitched masks — reused in the GPU
-    # stage for the verification detection's swap-stat (arm exclusion etc.).
+    # stage for the swap-stat after a fresh detection (arm exclusion etc.).
     total_vibe: Path | None = None
     roi: Path | None = None
     error: str | None = None
@@ -212,12 +217,14 @@ def _vibe_prep(
     chunk: int,
     files: dict[str, Path],
     *,
-    stitched_det: tuple[Path, Path] | None,
+    chunk_det: tuple[Path, Path] | None,
     stitched_total_vibe: Path | None,
     stitched_roi: Path | None,
 ) -> VibePrep:
-    """CPU-only stage. Safe to run from a worker thread — does resampling +
-    swap-stat + the up-front already-done / not-needed decision."""
+    """CPU-only stage. Safe to run from a worker thread — does the ROI /
+    VibeSeg resample onto the chunk grid, and if per-chunk detection is
+    already on disk, the swap-stat + not-needed decision. Missing detection
+    defers to the GPU stage."""
     raw_dir, _deriv_inv_dir, _deriv_seg_dir, out_dir, temp_dir = _sub_dirs(sub, "vibe")
     out_water = out_dir / f"sub-{sub}_acq-ax_chunk-{chunk}_part-water_desc-corrected_vibe.nii.gz"
     out_fat = out_dir / f"sub-{sub}_acq-ax_chunk-{chunk}_part-fat_desc-corrected_vibe.nii.gz"
@@ -240,19 +247,24 @@ def _vibe_prep(
             prep.outcome = "already_done"
             return prep
 
-        if stitched_det is None:
-            # nnUNet detection is GPU work — defer to the main thread.
-            prep.outcome = "needs_detection_gpu"
-            return prep
-
         temp_dir.mkdir(parents=True, exist_ok=True)
         water_nii = to_nii(files["water"])
-        det_water = _resample_seg_to(stitched_det[0], water_nii, temp_dir, f"chunk-{chunk}")
-        det_fat = _resample_seg_to(stitched_det[1], water_nii, temp_dir, f"chunk-{chunk}")
+        # Resample stitched ROI + VibeSeg onto the chunk grid — needed for the
+        # swap-stat whether detection is already on disk or freshly computed on
+        # the GPU. Only stitched versions of these seg families exist.
         total_vibe = (
             _resample_seg_to(stitched_total_vibe, water_nii, temp_dir, f"chunk-{chunk}") if stitched_total_vibe is not None else None
         )
         roi = _resample_seg_to(stitched_roi, water_nii, temp_dir, f"chunk-{chunk}") if stitched_roi is not None else None
+        prep.total_vibe = total_vibe
+        prep.roi = roi
+
+        if chunk_det is None:
+            # nnUNet detection is GPU work — defer to the main thread.
+            prep.outcome = "needs_detection_gpu"
+            return prep
+
+        det_water, det_fat = chunk_det
         stat = make_swap_statistic_single(
             f"sub-{sub}_chunk-{chunk}",
             det_water,
@@ -262,8 +274,6 @@ def _vibe_prep(
             roi_exclude=(9, 10),
         )
         needs = stat.count_fat >= VIBE_SWAPPED_VOXELS or stat.count_disagree >= VIBE_DISAGREE_VOXELS
-        prep.total_vibe = total_vibe
-        prep.roi = roi
         prep.outcome = "ready" if needs else "not_needed"
         return prep  # noqa: TRY300
     except Exception as e:  # noqa: BLE001
@@ -272,23 +282,17 @@ def _vibe_prep(
         return prep
 
 
-def _vibe_finish(prep: VibePrep, *, ddevice: str, gpu: int, verify: bool, log: Print_Logger) -> str:
+def _vibe_finish(prep: VibePrep, *, ddevice: str, gpu: int, log: Print_Logger) -> str:
     """GPU stage. Runs sequentially on the main thread.
 
-    ``verify=True``: after prep flags a chunk from the resampled stitched
-    detection, re-run detection on the native chunk grid (with the same
-    arm/ROI exclusion) and drop chunks that no longer meet the thresholds.
-    This suppresses the false positives that resampling introduces at chunk
-    boundaries.
+    When prep flagged ``needs_detection_gpu`` (no per-chunk detection on
+    disk), run nnUNet on the native chunk grid, apply the same arm/ROI
+    exclusion, and drop the chunk if it no longer meets the thresholds.
     """
     sub, chunk, files = prep.sub, prep.chunk, prep.files
     raw_dir, temp_dir = prep.raw_dir, prep.temp_dir
 
-    # Chunk-native nnUNet detection: (a) the mandatory fallback path when no
-    # stitched detection existed; (b) the verification pass when the resampled
-    # stitched detection flagged the chunk (`verify=True`, default).
-    run_native_detection = prep.outcome == "needs_detection_gpu" or verify
-    if run_native_detection:
+    if prep.outcome == "needs_detection_gpu":
         temp_dir.mkdir(parents=True, exist_ok=True)
         det_water = temp_dir / f"sub-{sub}_acq-ax_chunk-{chunk}_part-water_seg-fat-water-inversion-detection_msk.nii.gz"
         det_fat = temp_dir / f"sub-{sub}_acq-ax_chunk-{chunk}_part-fat_seg-fat-water-inversion-detection_msk.nii.gz"
@@ -312,8 +316,8 @@ def _vibe_finish(prep: VibePrep, *, ddevice: str, gpu: int, verify: bool, log: P
             roi_exclude=(9, 10),
         )
         if not (stat.count_fat >= VIBE_SWAPPED_VOXELS or stat.count_disagree >= VIBE_DISAGREE_VOXELS):
-            log.print(f"vibe sub-{sub} chunk-{chunk}: verification cleared (false positive)")
-            return "not_needed_verified"
+            log.print(f"vibe sub-{sub} chunk-{chunk}: not needed after native detection")
+            return "not_needed"
 
     prep.out_water.parent.mkdir(parents=True, exist_ok=True)
 
@@ -527,14 +531,6 @@ def main() -> None:
         default=max(1, min(8, (os.cpu_count() or 2) // 2)),
         help="Threads used to preprocess VIBE chunks (resample + swap-stat) ahead of the GPU stage.",
     )
-    ap.add_argument(
-        "--verify",
-        dest="verify",
-        action="store_true",
-        default=True,
-        help="Re-run detection on the native chunk grid after prep flags a swap, to drop false positives from resampling (default).",
-    )
-    ap.add_argument("--no-verify", dest="verify", action="store_false")
     ap.add_argument("--test", action="store_true", help="stop after 10 corrections")
     args = ap.parse_args()
 
@@ -567,7 +563,7 @@ def main() -> None:
         outcome = prep.outcome
         try:
             if outcome in ("ready", "needs_detection_gpu"):
-                outcome = _vibe_finish(prep, ddevice=args.ddevice, gpu=args.gpu, verify=args.verify, log=log)
+                outcome = _vibe_finish(prep, ddevice=args.ddevice, gpu=args.gpu, log=log)
             elif outcome == "error":
                 log.print(f"vibe sub-{s} chunk-{c}: prep error: {prep.error}")
         except Exception:  # noqa: BLE001
@@ -584,21 +580,22 @@ def main() -> None:
                 raw_dir, deriv_inv_dir, deriv_seg_dir, *_ = _sub_dirs(sub, "vibe")
                 if not raw_dir.exists():
                     continue
-                # Load whole-body stitched sources once per subject.
-                stitched_det = _vibe_stitched_detection(deriv_inv_dir, sub)
+                # Load whole-body stitched ROI + VibeSeg once per subject (used
+                # for arm exclusion + affected_structures — no per-chunk equivalent).
                 stitched_total_vibe = _vibe_stitched_total_vibe(deriv_seg_dir, sub)
                 stitched_roi = _vibe_stitched_roi(deriv_seg_dir, sub)
                 for chunk in range(1, 16):
                     files = _vibe_chunk_files(raw_dir, sub, chunk)
                     if files is None:
                         continue
+                    chunk_det = _vibe_chunk_detection(deriv_inv_dir, sub, chunk)
                     if pool is None:
                         # Serial fallback (--cpu-workers 0).
                         prep = _vibe_prep(
                             sub,
                             chunk,
                             files,
-                            stitched_det=stitched_det,
+                            chunk_det=chunk_det,
                             stitched_total_vibe=stitched_total_vibe,
                             stitched_roi=stitched_roi,
                         )
@@ -606,7 +603,7 @@ def main() -> None:
                         outcome = prep.outcome
                         try:
                             if outcome in ("ready", "needs_detection_gpu"):
-                                outcome = _vibe_finish(prep, ddevice=args.ddevice, gpu=args.gpu, verify=args.verify, log=log)
+                                outcome = _vibe_finish(prep, ddevice=args.ddevice, gpu=args.gpu, log=log)
                             elif outcome == "error":
                                 log.print(f"vibe sub-{sub} chunk-{chunk}: prep error: {prep.error}")
                         except Exception:  # noqa: BLE001
@@ -626,7 +623,7 @@ def main() -> None:
                         sub,
                         chunk,
                         files,
-                        stitched_det=stitched_det,
+                        chunk_det=chunk_det,
                         stitched_total_vibe=stitched_total_vibe,
                         stitched_roi=stitched_roi,
                     )
