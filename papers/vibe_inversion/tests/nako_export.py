@@ -35,10 +35,12 @@ import argparse
 import json
 import os
 import sys
-from collections import deque
+import time
+from collections import Counter, deque
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from threading import Lock
 
 import numpy as np
 
@@ -114,6 +116,71 @@ def _has_fit_backend_tag(path: Path) -> bool:
         return FIT_BACKEND_TAG in _load_json(path)
     except (FileNotFoundError, json.JSONDecodeError):
         return False
+
+
+# --- run statistics ----------------------------------------------------------
+
+
+@dataclass
+class RunStats:
+    """Counters written to ``rawdata-corrected-temp/stats-*.json`` at the end.
+    Thread-safe: VIBE prep runs in a worker pool."""
+
+    vibe_seen: int = 0
+    vibe_corrected: int = 0
+    vibe_corrected_by_chunk: Counter = field(default_factory=Counter)
+    vibe_not_needed: int = 0
+    vibe_error: int = 0
+    mevibe_seen: int = 0
+    mevibe_corrected: int = 0
+    mevibe_not_needed: int = 0
+    mevibe_skipped: int = 0
+    mevibe_error: int = 0
+    _lock: Lock = field(default_factory=Lock, repr=False)
+
+    def record_vibe(self, outcome: str, chunk: int) -> None:
+        with self._lock:
+            self.vibe_seen += 1
+            if outcome == "corrected":
+                self.vibe_corrected += 1
+                self.vibe_corrected_by_chunk[chunk] += 1
+            elif outcome == "not_needed":
+                self.vibe_not_needed += 1
+            elif outcome == "error":
+                self.vibe_error += 1
+
+    def record_mevibe(self, outcome: str) -> None:
+        with self._lock:
+            self.mevibe_seen += 1
+            if outcome == "corrected":
+                self.mevibe_corrected += 1
+            elif outcome == "not_needed":
+                self.mevibe_not_needed += 1
+            elif outcome == "skipped":
+                self.mevibe_skipped += 1
+            elif outcome == "error":
+                self.mevibe_error += 1
+
+    def to_json(self) -> dict:
+        return {
+            "vibe": {
+                "seen": self.vibe_seen,
+                "corrected": self.vibe_corrected,
+                "corrected_by_chunk": {str(k): v for k, v in sorted(self.vibe_corrected_by_chunk.items())},
+                "not_needed": self.vibe_not_needed,
+                "error": self.vibe_error,
+            },
+            "mevibe": {
+                "seen": self.mevibe_seen,
+                "corrected": self.mevibe_corrected,
+                "not_needed": self.mevibe_not_needed,
+                "skipped": self.mevibe_skipped,
+                "error": self.mevibe_error,
+            },
+        }
+
+
+STATS = RunStats()
 
 
 def _series_number(raw_json_path: Path) -> str | None:
@@ -539,7 +606,7 @@ def main() -> None:
     ap.add_argument("--modality", choices=("vibe", "mevibe", "both"), default="both")
     ap.add_argument("--start", type=int, default=100000)
     ap.add_argument("--stop", type=int, default=140000)
-    ap.add_argument("--gpu", type=int, default=0)
+    ap.add_argument("--gpu", type=int, default=3)
     ap.add_argument("--ddevice", choices=("cpu", "cuda", "mps"), default="cuda")
     ap.add_argument("--use-gpu-fit", action="store_true", help="batched torch multi-peak fit for MEVIBE")
     ap.add_argument(
@@ -554,6 +621,26 @@ def main() -> None:
     OUT_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
     OUT_TEMP_DIR.mkdir(parents=True, exist_ok=True)
     log = Print_Logger()
+
+    run_started = time.strftime("%Y%m%d-%H%M%S")
+
+    def _write_stats() -> None:
+        payload = {
+            "run_started": run_started,
+            "run_finished": time.strftime("%Y%m%d-%H%M%S"),
+            "args": {
+                "modality": args.modality,
+                "start": args.start,
+                "stop": args.stop,
+                "use_gpu_fit": args.use_gpu_fit,
+                "test": args.test,
+            },
+            "reconstruction_model": RECONSTRUCTION_NAME,
+            "stats": STATS.to_json(),
+        }
+        out = OUT_TEMP_DIR / f"stats-{run_started}.json"
+        _dump_json(out, payload)
+        log.print(f"stats written to {out}")
 
     corrected = 0
     seen = 0
@@ -588,6 +675,7 @@ def main() -> None:
             outcome = "error"
         if outcome == "corrected":
             corrected += 1
+        STATS.record_vibe(outcome, c)
         print(f"vibe sub-{s} chunk-{c}: {outcome} (corrected={corrected}, seen={seen})            ", end="\r")
         return bool(args.test and corrected >= 10)
 
@@ -628,10 +716,12 @@ def main() -> None:
                             outcome = "error"
                         if outcome == "corrected":
                             corrected += 1
+                        STATS.record_vibe(outcome, chunk)
                         print(f"vibe sub-{sub} chunk-{chunk}: {outcome} (corrected={corrected}, seen={seen})", end="\r")
                         if args.test and corrected >= 10:
                             print()
                             log.print(f"--test hit corrected>=10 (seen={seen}); stopping")
+                            _write_stats()
                             return
                         continue
                     # Parallel path — submit prep, drain when buffer full.
@@ -651,6 +741,7 @@ def main() -> None:
                             log.print(f"--test hit corrected>=10 (seen={seen}); stopping")
                             assert pool is not None
                             pool.shutdown(wait=False, cancel_futures=True)
+                            _write_stats()
                             return
                 # Between subjects, opportunistically drain anything already done
                 # so the console line stays close to the current subject.
@@ -660,6 +751,7 @@ def main() -> None:
                         log.print(f"--test hit corrected>=10 (seen={seen}); stopping")
                         assert pool is not None
                         pool.shutdown(wait=False, cancel_futures=True)
+                        _write_stats()
                         return
             else:
                 raw_dir, *_ = _sub_dirs(sub, "mevibe")
@@ -683,12 +775,14 @@ def main() -> None:
                     seen += 1
                     if outcome == "corrected":
                         corrected += 1
+                    STATS.record_mevibe(outcome)
                     print(f"mevibe sub-{sub} sequ-{sequ}: {outcome} (corrected={corrected}, seen={seen})", end="\r")
                     if args.test and corrected >= 10:
                         print()
                         log.print(f"--test hit corrected>=10 (seen={seen}); stopping")
                         if pool is not None:
                             pool.shutdown(wait=False, cancel_futures=True)
+                        _write_stats()
                         return
 
     # Final drain of the VIBE prep buffer.
@@ -698,10 +792,12 @@ def main() -> None:
             log.print(f"--test hit corrected>=10 (seen={seen}); stopping")
             if pool is not None:
                 pool.shutdown(wait=False, cancel_futures=True)
+            _write_stats()
             return
     if pool is not None:
         pool.shutdown(wait=True)
     print()
+    _write_stats()
 
 
 if __name__ == "__main__":
