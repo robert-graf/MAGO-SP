@@ -16,8 +16,8 @@ VIBE
 
 MEVIBE
     Reuse the existing detection masks AND the DL signal prior (peak-model
-    independent). Re-run only the multi-peak fit, using the **Hamilton
-    9-peak liver** model with **MAGO** (Gaussian residual, i.e.
+    independent). Re-run only the multi-peak fit, using the **Zhong 7-peak**
+    model (MRM 2014) with **MAGO** (Gaussian residual, i.e.
     ``use_rician=False``). Rename the sequ tag in every emitted filename
     from ``me1`` to the DICOM ``SeriesNumber`` pulled from the raw json;
     record the original sequ in each emitted json under ``original_sequ``.
@@ -67,10 +67,12 @@ OUT_TEMP_DIR = CANONICAL_ROOT / "rawdata-corrected-temp"
 
 # --- fit config --------------------------------------------------------------
 
-# Hamilton 9-peak liver (NMR Biomed 2011, https://doi.org/10.1002/nbm.1622)
-HAMILTON_FREQS_PPM = np.array([-3.8, -3.4, -3.1, -2.68, -2.46, -1.95, -0.5, 0.49, 0.59])
-HAMILTON_ALPHA_P = np.array([0.088, 0.642, 0.058, 0.062, 0.058, 0.006, 0.039, 0.01, 0.037])
-RECONSTRUCTION_NAME = "Hamilton"
+# Zhong 7-peak (MRM 2014) — active default.
+ZHONG_FREQS_PPM = np.array([-3.73, -3.33, -3.04, -2.60, -2.38, -1.86, 0.68])
+ZHONG_ALPHA_P = np.array([0.08, 0.63, 0.07, 0.09, 0.07, 0.02, 0.04])
+RECONSTRUCTION_NAME = "Zhong"
+RECON_FREQS_PPM = ZHONG_FREQS_PPM
+RECON_ALPHA_P = ZHONG_ALPHA_P
 # MAGO (Gaussian residual). MAGORINO would set this True.
 USE_RICIAN = False
 SIEMENS_MAGNETIC_FIELD_STRENGTH = 123.2400047 / gyromagnetic_ratio
@@ -87,9 +89,13 @@ MEVIBE_DISAGREE_VOXELS = 100000
 _EXTRA_JSON_FIELDS = {
     "reconstruction_model": RECONSTRUCTION_NAME,
     "reconstruction_optimizer": "MAGO" if not USE_RICIAN else "MAGORINO",
-    "reconstruction_alpha_p": HAMILTON_ALPHA_P.tolist(),
-    "reconstruction_freqs_ppm": HAMILTON_FREQS_PPM.tolist(),
+    "reconstruction_alpha_p": RECON_ALPHA_P.tolist(),
+    "reconstruction_freqs_ppm": RECON_FREQS_PPM.tolist(),
 }
+# Runtime-dependent, added per-call:
+#   reconstruction_fit_backend: "gpu" | "cpu"
+# Absent tag => file predates backend tagging => treat as missing, redo.
+FIT_BACKEND_TAG = "reconstruction_fit_backend"
 
 
 def _load_json(path: Path) -> dict:
@@ -101,6 +107,13 @@ def _dump_json(path: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w") as f:
         json.dump(data, f, indent=4)
+
+
+def _has_fit_backend_tag(path: Path) -> bool:
+    try:
+        return FIT_BACKEND_TAG in _load_json(path)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return False
 
 
 def _series_number(raw_json_path: Path) -> str | None:
@@ -243,7 +256,12 @@ def _vibe_prep(
         outcome="error",
     )
     try:
-        if out_water.exists() and out_fat.exists() and out_water_json.exists() and out_fat_json.exists():
+        if (
+            out_water.exists()
+            and out_fat.exists()
+            and _has_fit_backend_tag(out_water_json)
+            and _has_fit_backend_tag(out_fat_json)
+        ):
             prep.outcome = "already_done"
             return prep
 
@@ -341,6 +359,7 @@ def _vibe_finish(prep: VibePrep, *, ddevice: str, gpu: int, log: Print_Logger) -
         raw_json = raw_dir / f"sub-{sub}_acq-ax_chunk-{chunk}_part-{part}_vibe.json"
         base = _load_json(raw_json) if raw_json.exists() else {}
         base.update(_EXTRA_JSON_FIELDS)
+        base[FIT_BACKEND_TAG] = "cpu"
         _dump_json(out_json, base)
 
     log.print(f"vibe corrected sub-{sub} chunk-{chunk}")
@@ -451,7 +470,9 @@ def process_mevibe_sequ(
     out_pdff = out_dir / f"{base}_part-fat-fraction_desc-corrected_mevibe.nii.gz"
     out_pdwf = out_dir / f"{base}_part-water-fraction_desc-corrected_mevibe.nii.gz"
 
-    already_done = all(p.exists() for p in (out_water, out_fat, out_r2s, out_pdff, out_pdwf))
+    out_niis = (out_water, out_fat, out_r2s, out_pdff, out_pdwf)
+    out_jsons = [p.with_suffix("").with_suffix(".json") for p in out_niis]
+    already_done = all(p.exists() for p in out_niis) and all(_has_fit_backend_tag(j) for j in out_jsons)
     if already_done:
         return "not_needed"
 
@@ -487,8 +508,8 @@ def process_mevibe_sequ(
         override=False,
         vibe_from_signal=False,
         MagneticFieldStrength=SIEMENS_MAGNETIC_FIELD_STRENGTH,
-        alpha_p=HAMILTON_ALPHA_P,
-        freqs_ppm=HAMILTON_FREQS_PPM,
+        alpha_p=RECON_ALPHA_P,
+        freqs_ppm=RECON_FREQS_PPM,
         use_rician=USE_RICIAN,
         use_gpu=use_gpu,
         gpu_device="cuda" if use_gpu and ddevice == "cuda" else "cpu",
@@ -496,6 +517,7 @@ def process_mevibe_sequ(
     make_pdff_pdwf(out_water, out_fat, out_pdff, out_pdwf, override=False)
 
     # -- jsons ---------------------------------------------------------------
+    fit_backend = "gpu" if use_gpu else "cpu"
     for part, out_nii in (
         ("water", out_water),
         ("fat", out_fat),
@@ -507,6 +529,7 @@ def process_mevibe_sequ(
         base_json = _load_json(raw_json) if raw_json.exists() else {}
         base_json["original_sequ"] = sequ
         base_json.update(_EXTRA_JSON_FIELDS)
+        base_json[FIT_BACKEND_TAG] = fit_backend
         out_json = out_nii.with_suffix("").with_suffix(".json")
         _dump_json(out_json, base_json)
 
