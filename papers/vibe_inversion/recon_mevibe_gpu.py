@@ -28,9 +28,11 @@ Design:
 from __future__ import annotations
 
 import os
+import time
 
 import numpy as np
 import torch
+from tqdm import tqdm
 
 
 def _use_adam() -> bool:
@@ -149,7 +151,7 @@ def _fit_batch_lm(
         loss = ((pred - s_target) ** 2).sum(dim=-1)
 
     eye = torch.eye(3, dtype=theta.dtype, device=dev).unsqueeze(0)
-    for _ in range(n_iter):
+    for _ in tqdm(range(n_iter), desc=f"LM {theta.shape[0]} vox", leave=False):
         with torch.no_grad():
             pred, J = _pred_and_jac(theta, ti_row, fr_row, fi_row)
             r = pred - s_target
@@ -221,7 +223,7 @@ def _fit_batch(
     ti_row = ti.unsqueeze(0)
     fr_row = f_re.unsqueeze(0)
     fi_row = f_im.unsqueeze(0)
-    for _ in range(n_iter):
+    for _ in tqdm(range(n_iter), desc=f"Adam {theta.shape[0]} vox", leave=False):
         opt.zero_grad(set_to_none=True)
         pred = _predict(theta, ti_row, fr_row, fi_row)
         loss = _rician_neg_loglik_torch(s_target, pred, sigma).sum() if rician else ((pred - s_target) ** 2).sum()
@@ -301,6 +303,8 @@ def multipeak_fat_model_from_guess_torch(
     dev = torch.device(device)
     s_tensor, ti, f_re, f_im, shape = _prep(s_magnitude_arr, MagneticFieldStrength, ti_ms, alpha_p, freqs_ppm, dev)
     n_vox = s_tensor.shape[0]
+    print(f"[gpu-fit] from_guess start: shape={shape}, n_vox={n_vox}, n_iter={n_iter}", flush=True)
+    _t0 = time.time()
     w0 = torch.as_tensor(water_guess.astype(np.float32, copy=False).reshape(-1), device=dev)
     f0 = torch.as_tensor(fat_guess.astype(np.float32, copy=False).reshape(-1), device=dev)
     r0 = torch.full((n_vox,), 100.0, dtype=torch.float32, device=dev)
@@ -334,6 +338,9 @@ def multipeak_fat_model_from_guess_torch(
     out_w[low] = 0
     out_f[low] = 0
     out_r[low] = 0
+    if dev.type == "cuda":
+        torch.cuda.synchronize(dev)
+    print(f"[gpu-fit] from_guess done in {time.time() - _t0:.2f}s", flush=True)
     return out_w, out_f, out_r, None
 
 
@@ -360,6 +367,8 @@ def multipeak_fat_model_smooth_torch(
     dev = torch.device(device)
     s_tensor, ti, f_re, f_im, shape = _prep(s_magnitude_arr, MagneticFieldStrength, ti_ms, alpha_p, freqs_ppm, dev)
     n_vox = s_tensor.shape[0]
+    print(f"[gpu-fit] smooth start: shape={shape}, n_vox={n_vox}, n_iter={n_iter}", flush=True)
+    _t0 = time.time()
     r2_init = 100.0
     theta_a = torch.tensor([[0.0, 1000.0, r2_init]], dtype=torch.float32, device=dev).expand(n_vox, 3).contiguous()
     theta_b = torch.tensor([[1000.0, 0.0, r2_init]], dtype=torch.float32, device=dev).expand(n_vox, 3).contiguous()
@@ -393,4 +402,7 @@ def multipeak_fat_model_smooth_torch(
     out_f[low] = 0
     out_r[low] = 0
     out_l[low] = 0
+    if dev.type == "cuda":
+        torch.cuda.synchronize(dev)
+    print(f"[gpu-fit] smooth done in {time.time() - _t0:.2f}s", flush=True)
     return out_w, out_f, out_r, out_l
