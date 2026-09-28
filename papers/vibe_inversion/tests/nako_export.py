@@ -256,12 +256,7 @@ def _vibe_prep(
         outcome="error",
     )
     try:
-        if (
-            out_water.exists()
-            and out_fat.exists()
-            and _has_fit_backend_tag(out_water_json)
-            and _has_fit_backend_tag(out_fat_json)
-        ):
+        if out_water.exists() and out_fat.exists() and out_water_json.exists() and out_fat_json.exists():
             prep.outcome = "already_done"
             return prep
 
@@ -359,7 +354,6 @@ def _vibe_finish(prep: VibePrep, *, ddevice: str, gpu: int, log: Print_Logger) -
         raw_json = raw_dir / f"sub-{sub}_acq-ax_chunk-{chunk}_part-{part}_vibe.json"
         base = _load_json(raw_json) if raw_json.exists() else {}
         base.update(_EXTRA_JSON_FIELDS)
-        base[FIT_BACKEND_TAG] = "cpu"
         _dump_json(out_json, base)
 
     log.print(f"vibe corrected sub-{sub} chunk-{chunk}")
